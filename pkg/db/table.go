@@ -276,6 +276,44 @@ func (t *Table) Update(setColumns map[string]interface{}, whereCol string, where
 	return nil
 }
 
+// Clone creates a deep copy of the table
+func (t *Table) Clone() *Table {
+	newTable := &Table{
+		columns: make([]Column, len(t.columns)),
+		tree:    NewBTree(),
+	}
+
+	// Copy columns
+	copy(newTable.columns, t.columns)
+
+	// Copy records
+	records := t.tree.Scan()
+	for _, record := range records {
+		// Create a new map for the record's columns
+		newColumns := make(map[string]interface{})
+		for k, v := range record.Columns {
+			newColumns[k] = v
+		}
+		newRecord := interfaces.NewRecord(newColumns)
+
+		// Get the ID
+		var id int
+		switch v := record.Columns["id"].(type) {
+		case float64:
+			id = int(v)
+		case int:
+			id = v
+		default:
+			continue // Skip invalid records
+		}
+
+		// Insert into new tree
+		newTable.tree.Insert(id, newRecord)
+	}
+
+	return newTable
+}
+
 // MarshalJSON customizes the JSON representation of the Table
 func (t *Table) MarshalJSON() ([]byte, error) {
 	// Create a structure to hold both columns and records

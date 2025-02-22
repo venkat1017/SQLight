@@ -58,41 +58,25 @@ type SelectStatement struct {
 }
 
 func (s *SelectStatement) Exec(db interfaces.Database) error {
-	// Get all records
-	records, err := db.SelectFromTable(s.Table)
+	records, err := db.SelectFromTable(s.Table, s.WhereCol, s.WhereValue)
 	if err != nil {
 		return err
 	}
 
-	// Get column names
+	// If no records found
+	if len(records) == 0 {
+		fmt.Println("No records found")
+		return nil
+	}
+
+	// Get column information
 	columns, err := db.GetTableColumns(s.Table)
 	if err != nil {
 		return err
 	}
 
-	// Filter records if where clause exists
-	var filteredRecords []interface{}
-	if s.WhereCol != "" {
-		for _, record := range records {
-			if r, ok := record.(*interfaces.Record); ok {
-				if val, exists := r.Columns[s.WhereCol]; exists {
-					// Convert both values to strings for comparison
-					valStr := fmt.Sprintf("%v", val)
-					whereStr := fmt.Sprintf("%v", s.WhereValue)
-					if valStr == whereStr {
-						filteredRecords = append(filteredRecords, record)
-					}
-				}
-			}
-		}
-	} else {
-		filteredRecords = records
-	}
-
 	// Print records
-	if len(filteredRecords) > 0 {
-		printRecords(columns, filteredRecords)
-	}
+	printRecords(columns, records)
 	return nil
 }
 
@@ -126,6 +110,27 @@ type DeleteStatement struct {
 
 func (s *DeleteStatement) Exec(db interfaces.Database) error {
 	return db.DeleteFromTable(s.TableName, s.WhereColumn, s.WhereValue)
+}
+
+// BeginStatement represents a BEGIN TRANSACTION command
+type BeginStatement struct{}
+
+func (s *BeginStatement) Exec(db interfaces.Database) error {
+	return db.Begin()
+}
+
+// CommitStatement represents a COMMIT command
+type CommitStatement struct{}
+
+func (s *CommitStatement) Exec(db interfaces.Database) error {
+	return db.Commit()
+}
+
+// RollbackStatement represents a ROLLBACK command
+type RollbackStatement struct{}
+
+func (s *RollbackStatement) Exec(db interfaces.Database) error {
+	return db.Rollback()
 }
 
 // Helper function to print records in table format
@@ -185,22 +190,61 @@ func printRow(columns []string, values []string, widths map[string]int) {
 	fmt.Println("|")
 }
 
+// Parser represents a SQL parser
+type Parser struct {
+	db interfaces.Database
+}
+
+// NewParser creates a new SQL parser
+func NewParser(db interfaces.Database) *Parser {
+	return &Parser{db: db}
+}
+
+// Parse parses and executes a SQL command
+func (p *Parser) Parse(query string) (string, error) {
+	stmt, err := ParseSQL(query)
+	if err != nil {
+		return "", err
+	}
+
+	err = stmt.Exec(p.db)
+	if err != nil {
+		return "", err
+	}
+
+	return "OK", nil
+}
+
 // ParseSQL parses SQL commands
-func ParseSQL(query string) (interfaces.Statement, error) {
-	// Convert to uppercase for case-insensitive matching of keywords only
+func ParseSQL(query string) (Statement, error) {
+	// Remove semicolon if present
+	query = strings.TrimSuffix(query, ";")
+	query = strings.TrimSpace(query)
+
+	// Convert to uppercase for case-insensitive comparison
 	upperQuery := strings.ToUpper(query)
+
 	if strings.HasPrefix(upperQuery, "CREATE TABLE") {
 		return parseCreateTable(query)
 	} else if strings.HasPrefix(upperQuery, "INSERT INTO") {
 		return parseInsert(query)
 	} else if strings.HasPrefix(upperQuery, "SELECT") {
 		return parseSelect(query)
-	} else if strings.HasPrefix(upperQuery, "DELETE FROM") {
-		return parseDelete(query)
 	} else if strings.HasPrefix(upperQuery, "UPDATE") {
 		return parseUpdate(query)
+	} else if strings.HasPrefix(upperQuery, "DELETE FROM") {
+		return parseDelete(query)
+	} else if upperQuery == "BEGIN TRANSACTION" || upperQuery == "BEGIN" {
+		return &BeginStatement{}, nil
+	} else if upperQuery == "COMMIT" {
+		return &CommitStatement{}, nil
+	} else if upperQuery == "ROLLBACK" {
+		return &RollbackStatement{}, nil
+	} else if upperQuery == "EXIT" {
+		return &ExitStatement{}, nil
 	}
-	return nil, fmt.Errorf("unsupported SQL command")
+
+	return nil, fmt.Errorf("unknown command: %s", query)
 }
 
 func parseCreateTable(query string) (*CreateStatement, error) {
@@ -242,51 +286,33 @@ func parseInsert(query string) (*InsertStatement, error) {
 
 	// Parse INSERT query
 	words := strings.Fields(query)
-	if len(words) < 4 || strings.ToUpper(words[1]) != "INTO" || strings.ToUpper(words[3]) != "VALUES" {
+	if len(words) < 4 || strings.ToUpper(words[1]) != "INTO" {
 		return nil, fmt.Errorf("invalid INSERT syntax")
 	}
 
-	tableName := strings.TrimSpace(words[2])
-	tableName = strings.ToLower(tableName)
+	tableName := words[2]
 
-	// Join the remaining words for values parsing
-	valuesStr := strings.Join(words[4:], " ")
-	valuesStr = strings.TrimSpace(valuesStr)
-
-	// Handle both formats: with or without parentheses
-	if !strings.HasPrefix(valuesStr, "(") {
-		valuesStr = "(" + valuesStr + ")"
-	}
-
-	// Parse values
-	if !strings.HasPrefix(valuesStr, "(") || !strings.HasSuffix(valuesStr, ")") {
-		return nil, fmt.Errorf("values must be enclosed in parentheses")
-	}
-
-	// Extract values between parentheses
-	valuesStr = valuesStr[1 : len(valuesStr)-1]
-	valueParts := strings.Split(valuesStr, ",")
-	values := make([]interface{}, len(valueParts))
-
-	for i, part := range valueParts {
-		part = strings.TrimSpace(part)
-		// Handle string values (quoted)
-		if strings.HasPrefix(part, "'") && strings.HasSuffix(part, "'") {
-			values[i] = strings.Trim(part, "'")
-		} else {
-			// Try to parse as float64 for numeric values
-			if floatVal, err := strconv.ParseFloat(part, 64); err == nil {
-				values[i] = floatVal
-			} else {
-				return nil, fmt.Errorf("invalid value: %s", part)
-			}
+	// Find the VALUES keyword
+	valuesIndex := -1
+	for i, word := range words {
+		if strings.ToUpper(word) == "VALUES" {
+			valuesIndex = i
+			break
 		}
 	}
 
-	return &InsertStatement{
-		Table:  tableName,
-		Values: values,
-	}, nil
+	if valuesIndex == -1 || valuesIndex+1 >= len(words) {
+		return nil, fmt.Errorf("invalid INSERT syntax")
+	}
+
+	// Parse the values
+	valuesStr := strings.Join(words[valuesIndex+1:], " ")
+	parsedValues, err := parseValues(valuesStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &InsertStatement{Table: tableName, Values: parsedValues}, nil
 }
 
 func parseSelect(query string) (*SelectStatement, error) {
@@ -383,7 +409,7 @@ func parseUpdate(query string) (*UpdateStatement, error) {
 	// Remove trailing semicolon if present
 	query = strings.TrimSuffix(query, ";")
 
-	// UPDATE table_name SET column1 = value1, column2 = value2 WHERE column = value
+	// UPDATE table_name SET column1 = value1 WHERE column = value
 	parts := strings.Split(query, "WHERE")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("UPDATE statement must have a WHERE clause")
@@ -401,7 +427,6 @@ func parseUpdate(query string) (*UpdateStatement, error) {
 		return nil, fmt.Errorf("invalid UPDATE statement format")
 	}
 	tableName := strings.TrimSpace(strings.TrimPrefix(tablePart, "UPDATE"))
-	tableName = strings.ToLower(tableName) // Convert table name to lowercase
 
 	// Parse SET clause
 	setColumns := make(map[string]interface{})
@@ -412,15 +437,18 @@ func parseUpdate(query string) (*UpdateStatement, error) {
 			return nil, fmt.Errorf("invalid SET clause format")
 		}
 		key := strings.TrimSpace(keyVal[0])
-		key = strings.ToLower(key) // Convert column name to lowercase
 		val := strings.TrimSpace(keyVal[1])
 
-		// Try to parse as float64 for numeric values
-		if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
-			setColumns[key] = floatVal
+		// Handle quoted string values
+		if strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'") {
+			setColumns[key] = val[1 : len(val)-1]
 		} else {
-			// Remove quotes for string values
-			setColumns[key] = strings.Trim(val, "'\"")
+			// Try to parse as float64 for numeric values
+			if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
+				setColumns[key] = floatVal
+			} else {
+				setColumns[key] = val
+			}
 		}
 	}
 
@@ -428,29 +456,31 @@ func parseUpdate(query string) (*UpdateStatement, error) {
 	whereClause := strings.TrimSpace(parts[1])
 	whereParts := strings.Split(whereClause, "=")
 	if len(whereParts) != 2 {
-		return nil, fmt.Errorf("invalid WHERE clause in UPDATE statement")
+		return nil, fmt.Errorf("invalid WHERE clause format")
 	}
 
 	whereColumn := strings.TrimSpace(whereParts[0])
-	whereColumn = strings.ToLower(whereColumn) // Convert where column to lowercase
-	whereVal := strings.TrimSpace(whereParts[1])
+	whereValue := strings.TrimSpace(whereParts[1])
 
-	stmt := &UpdateStatement{
+	// Handle quoted string values for whereValue
+	var whereValueInterface interface{}
+	if strings.HasPrefix(whereValue, "'") && strings.HasSuffix(whereValue, "'") {
+		whereValueInterface = whereValue[1 : len(whereValue)-1]
+	} else {
+		// Try to parse as float64 for numeric values
+		if floatVal, err := strconv.ParseFloat(whereValue, 64); err == nil {
+			whereValueInterface = floatVal
+		} else {
+			whereValueInterface = whereValue
+		}
+	}
+
+	return &UpdateStatement{
 		TableName:   tableName,
 		SetColumns:  setColumns,
 		WhereColumn: whereColumn,
-	}
-
-	// Try to parse where value as float64 for numeric values
-	if floatVal, err := strconv.ParseFloat(whereVal, 64); err == nil {
-		stmt.WhereValue = floatVal
-	} else {
-		// Remove quotes and any trailing semicolon for string values
-		whereVal = strings.TrimSuffix(whereVal, ";")
-		stmt.WhereValue = strings.Trim(whereVal, "'\"")
-	}
-
-	return stmt, nil
+		WhereValue:  whereValueInterface,
+	}, nil
 }
 
 // Helper function to parse values

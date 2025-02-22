@@ -5,6 +5,7 @@ import (
 	"sqlite-clone/pkg/db"
 	"sqlite-clone/pkg/interfaces"
 	"testing"
+	"path/filepath"
 )
 
 func TestDatabase(t *testing.T) {
@@ -236,4 +237,120 @@ func TestBTree(t *testing.T) {
 	if found != nil {
 		t.Error("Record still exists after deletion")
 	}
+}
+
+func TestTransactions(t *testing.T) {
+	// Create a temporary database file
+	tmpFile := filepath.Join(os.TempDir(), "test_db_tx.json")
+	defer os.Remove(tmpFile)
+
+	db := db.NewDatabase(tmpFile)
+
+	// Create a test table
+	columns := []interfaces.ColumnDef{
+		{Name: "id", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+	}
+	err := db.CreateTable("users", columns)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+
+	// Test 1: Basic transaction commit
+	t.Run("Transaction Commit", func(t *testing.T) {
+		err := db.Begin()
+		if err != nil {
+			t.Fatalf("Failed to begin transaction: %v", err)
+		}
+
+		// Insert a record
+		record := interfaces.NewRecord(map[string]interface{}{
+			"id":   1,
+			"name": "Alice",
+		})
+		tables := db.Tables()
+		err = tables["users"].Insert(record)
+		if err != nil {
+			t.Fatalf("Failed to insert record: %v", err)
+		}
+
+		err = db.Commit()
+		if err != nil {
+			t.Fatalf("Failed to commit transaction: %v", err)
+		}
+
+		// Verify record exists
+		tables = db.Tables()
+		cursor := tables["users"].NewCursor()
+		found := false
+		record, err = cursor.First()
+		for record != nil && err == nil {
+			if record.Columns["id"] == 1 {
+				found = true
+				break
+			}
+			record, err = cursor.Next()
+		}
+		if !found {
+			t.Error("Record not found after commit")
+		}
+	})
+
+	// Test 2: Transaction rollback
+	t.Run("Transaction Rollback", func(t *testing.T) {
+		err := db.Begin()
+		if err != nil {
+			t.Fatalf("Failed to begin transaction: %v", err)
+		}
+
+		// Insert a record
+		record := interfaces.NewRecord(map[string]interface{}{
+			"id":   2,
+			"name": "Bob",
+		})
+		tables := db.Tables()
+		err = tables["users"].Insert(record)
+		if err != nil {
+			t.Fatalf("Failed to insert record: %v", err)
+		}
+
+		err = db.Rollback()
+		if err != nil {
+			t.Fatalf("Failed to rollback transaction: %v", err)
+		}
+
+		// Verify record does not exist
+		tables = db.Tables()
+		cursor := tables["users"].NewCursor()
+		found := false
+		record, err = cursor.First()
+		for record != nil && err == nil {
+			if record.Columns["id"] == 2 {
+				found = true
+				break
+			}
+			record, err = cursor.Next()
+		}
+		if found {
+			t.Error("Record found after rollback")
+		}
+	})
+
+	// Test 3: Nested transactions not allowed
+	t.Run("Nested Transactions", func(t *testing.T) {
+		err := db.Begin()
+		if err != nil {
+			t.Fatalf("Failed to begin first transaction: %v", err)
+		}
+
+		err = db.Begin()
+		if err == nil {
+			t.Error("Expected error when beginning nested transaction")
+		}
+
+		err = db.Rollback()
+		if err != nil {
+			t.Fatalf("Failed to rollback transaction: %v", err)
+		}
+	})
 }

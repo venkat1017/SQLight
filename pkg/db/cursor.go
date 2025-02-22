@@ -2,28 +2,41 @@ package db
 
 import "sqlite-clone/pkg/interfaces"
 
+// Cursor represents a cursor for iterating over records in a table
 type Cursor struct {
-	table   *Table
-	current int
-	records []*interfaces.Record // Cache records for iteration
+	table     *Table
+	current   *interfaces.Record
+	position  int
+	records   []*interfaces.Record
 }
 
+// NewCursor creates a new cursor for the table
 func (t *Table) NewCursor() *Cursor {
-	return &Cursor{
-		table:   t,
-		current: -1,
-		records: t.Select(), // Get all records from B-Tree
+	records := t.tree.Scan()
+	cursor := &Cursor{
+		table:    t,
+		records:  records,
+		position: -1,
 	}
+	return cursor
 }
 
-func (c *Cursor) Next() *interfaces.Record {
-	c.current++
-	if c.current < len(c.records) {
-		return c.records[c.current]
+// First moves the cursor to the first record
+func (c *Cursor) First() (*interfaces.Record, error) {
+	if len(c.records) == 0 {
+		return nil, nil
 	}
-	return nil
+	c.position = 0
+	c.current = c.records[c.position]
+	return c.current, nil
 }
 
-func (c *Cursor) Reset() {
-	c.current = -1
+// Next moves the cursor to the next record
+func (c *Cursor) Next() (*interfaces.Record, error) {
+	if c.position >= len(c.records)-1 {
+		return nil, nil
+	}
+	c.position++
+	c.current = c.records[c.position]
+	return c.current, nil
 }

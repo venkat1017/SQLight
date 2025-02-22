@@ -18,18 +18,23 @@ func NewRecord(values map[string]interface{}) *Record {
 	}
 }
 
-// Database interface for SQL operations
-type Database interface {
-	CreateTable(name string, columns []ColumnDef) error
-	InsertIntoTable(name string, record interface{}) error
-	SelectFromTable(name string) ([]interface{}, error)
-	FindInTable(name string, id int) (interface{}, error)
-	GetTableColumns(name string) ([]string, error)
-	DeleteFromTable(name string, whereCol string, whereVal interface{}) error
-	UpdateTable(name string, setColumns map[string]interface{}, whereCol string, whereVal interface{}) error
-}
-
 // Statement interface for SQL commands
 type Statement interface {
 	Exec(db Database) error
+}
+
+// Database interface for SQL operations
+type Database interface {
+	// Table operations
+	CreateTable(name string, columns []ColumnDef) error
+	GetTableColumns(name string) ([]string, error)
+	InsertIntoTable(name string, record *Record) error
+	UpdateTable(name string, setColumns map[string]interface{}, whereColumn string, whereValue interface{}) error
+	DeleteFromTable(name string, whereColumn string, whereValue interface{}) error
+	SelectFromTable(name string, whereColumn string, whereValue interface{}) ([]interface{}, error)
+
+	// Transaction operations
+	Begin() error
+	Commit() error
+	Rollback() error
 }

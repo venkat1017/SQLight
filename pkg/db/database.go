@@ -47,8 +47,10 @@ func (s *CreateStatement) Exec(db *Database) error {
 
 // Database holds the tables
 type Database struct {
-	tables map[string]*Table
-	file   string // Path to the database file
+	tables         map[string]*Table
+	file           string // Path to the database file
+	inTransaction  bool
+	currentTx      *Transaction
 }
 
 // Tables returns a copy of the tables map
@@ -108,6 +110,64 @@ func (db *Database) Save() {
 	}
 }
 
+// Begin starts a new transaction
+func (db *Database) Begin() error {
+	if db.inTransaction {
+		return fmt.Errorf("transaction already in progress")
+	}
+
+	// Create a new transaction
+	tx := NewTransaction()
+	db.currentTx = tx
+
+	// Create a snapshot of the current state
+	db.currentTx.CreateSnapshot(db.tables)
+	db.inTransaction = true
+	return nil
+}
+
+// Commit commits the current transaction
+func (db *Database) Commit() error {
+	if !db.inTransaction {
+		return fmt.Errorf("no transaction in progress")
+	}
+
+	if db.currentTx == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	// Save the changes to disk
+	db.Save()
+	db.currentTx = nil
+	db.inTransaction = false
+	return nil
+}
+
+// Rollback rolls back the current transaction
+func (db *Database) Rollback() error {
+	if !db.inTransaction {
+		return fmt.Errorf("no transaction in progress")
+	}
+
+	if db.currentTx == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	// Restore the database state from the snapshot
+	for name, table := range db.currentTx.snapshot {
+		db.tables[name] = table.Clone()
+	}
+
+	// Handle deleted tables
+	for name := range db.currentTx.deleted {
+		delete(db.tables, name)
+	}
+
+	db.currentTx = nil
+	db.inTransaction = false
+	return nil
+}
+
 // CreateTable creates a new table with the specified columns
 func (db *Database) CreateTable(name string, columns []interfaces.ColumnDef) error {
 	fmt.Printf("Creating table: %s with columns: %v\n", name, columns)
@@ -132,29 +192,49 @@ func (db *Database) GetTableColumns(name string) ([]string, error) {
 	return nil, fmt.Errorf("table %s not found", name)
 }
 
-// InsertIntoTable adds a record to a table
-func (db *Database) InsertIntoTable(name string, record interface{}) error {
-	r, ok := record.(*interfaces.Record)
-	if !ok {
-		return fmt.Errorf("invalid record type")
+// InsertIntoTable inserts a record into a table
+func (db *Database) InsertIntoTable(name string, record *interfaces.Record) error {
+	table, exists := db.tables[name]
+	if !exists {
+		return fmt.Errorf("table %s does not exist", name)
 	}
-	if table, ok := db.tables[name]; ok {
-		return table.Insert(r)
-	}
-	return fmt.Errorf("table %s not found", name)
+
+	return table.Insert(record)
 }
 
-// Update SelectFromTable to return []interface{} instead of []*Record
-func (db *Database) SelectFromTable(name string) ([]interface{}, error) {
-	if table, ok := db.tables[name]; ok {
-		records := table.Select()
-		result := make([]interface{}, len(records))
-		for i, r := range records {
-			result[i] = r
-		}
+// SelectFromTable selects records from a table
+func (db *Database) SelectFromTable(name string, whereColumn string, whereValue interface{}) ([]interface{}, error) {
+	table, exists := db.tables[name]
+	if !exists {
+		return nil, fmt.Errorf("table %s does not exist", name)
+	}
+
+	records := table.Select()
+	result := make([]interface{}, len(records))
+	for i, r := range records {
+		result[i] = r
+	}
+
+	if whereColumn == "" {
 		return result, nil
 	}
-	return nil, fmt.Errorf("table %s not found", name)
+
+	// Filter records based on where clause
+	var filtered []interface{}
+	for _, record := range result {
+		if r, ok := record.(*interfaces.Record); ok {
+			if val, exists := r.Columns[whereColumn]; exists {
+				// Convert both values to strings for comparison
+				valStr := fmt.Sprintf("%v", val)
+				whereStr := fmt.Sprintf("%v", whereValue)
+				if valStr == whereStr {
+					filtered = append(filtered, record)
+				}
+			}
+		}
+	}
+
+	return filtered, nil
 }
 
 // Add new method for finding specific records
