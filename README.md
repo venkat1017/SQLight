@@ -1,6 +1,6 @@
-# SQLite Clone in Go
+# SQLight is a lightweight version of SQLite in Go
 
-A lightweight SQLite clone implemented in Go that supports basic SQL operations. This project demonstrates how to create a simple but functional database system with support for CRUD operations (Create, Read, Update, Delete) and data type validation.
+A lightweight SQLite clone implemented in Go that supports basic SQL operations. This project demonstrates creating a simple but functional database system supporting CRUD operations (Create, Read, Update, Delete) and data type validation.
 
 ## Features
 
@@ -29,13 +29,13 @@ A lightweight SQLite clone implemented in Go that supports basic SQL operations.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/sqlite-clone.git
-cd sqlite-clone
+git clone https://github.com/yourusername/sqlight.git
+cd sqlight
 ```
 
 2. Build the project:
 ```bash
-go build -o sqlite-clone ./cmd/main.go
+go build -o sqlight ./cmd/main.go
 ```
 
 ## Usage
@@ -93,7 +93,7 @@ DELETE FROM users WHERE id = 2;
 ## Project Structure
 
 ```
-sqlite-clone/
+sqlight/
 ├── cmd/
 │   └── main.go           # Main application entry point
 ├── pkg/
