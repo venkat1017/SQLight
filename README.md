@@ -1,6 +1,6 @@
-# SQLite Clone in Go
+# SQLight is a lightweight version of SQLite in Go
 
-A lightweight SQLite clone implemented in Go that supports basic SQL operations. This project demonstrates how to create a simple but functional database system with support for CRUD operations (Create, Read, Update, Delete) and data type validation.
+A lightweight SQLite clone implemented in Go that supports basic SQL operations. This project demonstrates creating a simple but functional database system supporting CRUD operations (Create, Read, Update, Delete) and data type validation.
 
 ## Features
 
