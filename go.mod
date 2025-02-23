@@ -1,3 +1,3 @@
-module sqlite-clone
+module sqlight
 
 go 1.21.2

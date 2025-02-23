@@ -3,7 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"os"
-	"sqlite-clone/pkg/db"
+	"sqlight/pkg/db"
 )
 
 // TableData represents the structure we want to save

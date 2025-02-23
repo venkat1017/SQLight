@@ -3,9 +3,9 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"sqlite-clone/pkg/interfaces"
-	"sqlite-clone/pkg/types/datatypes"
-	"sqlite-clone/pkg/logger"
+	"sqlight/pkg/interfaces"
+	"sqlight/pkg/logger"
+	"sqlight/pkg/types/datatypes"
 )
 
 type Column struct {
@@ -223,7 +223,7 @@ func (t *Table) Update(setColumns map[string]interface{}, whereCol string, where
 		if val, ok := record.Columns[whereCol]; ok {
 			logger.Debugf("Comparing record value=%v (type: %T) with whereVal=%v (type: %T)", val, val, whereVal, whereVal)
 			isMatch := false
-			
+
 			// Convert both values to float64 for comparison if they're numbers
 			if whereNum, ok := whereVal.(float64); ok {
 				logger.Debugf("whereVal is float64: %v", whereNum)
@@ -318,7 +318,7 @@ func (t *Table) Clone() *Table {
 func (t *Table) MarshalJSON() ([]byte, error) {
 	// Create a structure to hold both columns and records
 	tableData := struct {
-		Columns []Column                     `json:"columns"`
+		Columns []Column                          `json:"columns"`
 		Records map[string]map[string]interface{} `json:"records"`
 	}{
 		Columns: t.columns,
@@ -339,7 +339,7 @@ func (t *Table) MarshalJSON() ([]byte, error) {
 func (t *Table) UnmarshalJSON(data []byte) error {
 	// Create a temporary structure to hold the data
 	var tableData struct {
-		Columns []Column                     `json:"columns"`
+		Columns []Column                          `json:"columns"`
 		Records map[string]map[string]interface{} `json:"records"`
 	}
 

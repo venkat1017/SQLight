@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sqlite-clone/pkg/db"
-	"sqlite-clone/pkg/logger"
-	"sqlite-clone/pkg/sql"
+	"sqlight/pkg/db"
+	"sqlight/pkg/logger"
+	"sqlight/pkg/sql"
 	"strings"
 	"syscall"
 )

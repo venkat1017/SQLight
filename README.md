@@ -29,13 +29,13 @@ A lightweight SQLite clone implemented in Go that supports basic SQL operations.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/sqlite-clone.git
-cd sqlite-clone
+git clone https://github.com/yourusername/sqlight.git
+cd sqlight
 ```
 
 2. Build the project:
 ```bash
-go build -o sqlite-clone ./cmd/main.go
+go build -o sqlight ./cmd/main.go
 ```
 
 ## Usage
@@ -43,13 +43,13 @@ go build -o sqlite-clone ./cmd/main.go
 Run the program:
 ```bash
 # Basic usage
-./sqlite-clone
+./sqlight
 
 # With debug logging enabled
-./sqlite-clone -debug
+./sqlight -debug
 
 # With custom database file
-./sqlite-clone -db mydb.json
+./sqlight -db mydb.json
 ```
 
 ### Example SQL Commands
@@ -93,7 +93,7 @@ DELETE FROM users WHERE id = 2;
 ## Project Structure
 
 ```
-sqlite-clone/
+sqlight/
 ├── cmd/
 │   └── main.go           # Main application entry point
 ├── pkg/
@@ -124,7 +124,7 @@ go test ./...
 ### Debug Mode
 Run with the `-debug` flag to enable detailed logging:
 ```bash
-./sqlite-clone -debug
+./sqlight -debug
 ```
 
 ## Contributing

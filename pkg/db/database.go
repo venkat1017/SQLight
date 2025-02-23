@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sqlite-clone/pkg/interfaces"
-	"sqlite-clone/pkg/sql"
+	"sqlight/pkg/interfaces"
+	"sqlight/pkg/sql"
 )
 
 // Verify Database implements the interface
@@ -47,10 +47,10 @@ func (s *CreateStatement) Exec(db *Database) error {
 
 // Database holds the tables
 type Database struct {
-	tables         map[string]*Table
-	file           string // Path to the database file
-	inTransaction  bool
-	currentTx      *Transaction
+	tables        map[string]*Table
+	file          string // Path to the database file
+	inTransaction bool
+	currentTx     *Transaction
 }
 
 // Tables returns a copy of the tables map
@@ -171,12 +171,12 @@ func (db *Database) Rollback() error {
 // CreateTable creates a new table with the specified columns
 func (db *Database) CreateTable(name string, columns []interfaces.ColumnDef) error {
 	fmt.Printf("Creating table: %s with columns: %v\n", name, columns)
-	
+
 	// Check if table already exists
 	if _, exists := db.tables[name]; exists {
 		return fmt.Errorf("table %s already exists", name)
 	}
-	
+
 	table, err := NewTable(columns)
 	if err != nil {
 		return err

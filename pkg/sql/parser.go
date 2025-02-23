@@ -3,7 +3,7 @@ package sql
 import (
 	"fmt"
 	"os"
-	"sqlite-clone/pkg/interfaces"
+	"sqlight/pkg/interfaces"
 	"strconv"
 	"strings"
 )
@@ -103,9 +103,9 @@ func (s *UpdateStatement) Exec(db interfaces.Database) error {
 
 // DeleteStatement represents a DELETE command
 type DeleteStatement struct {
-	TableName string
+	TableName   string
 	WhereColumn string
-	WhereValue interface{}
+	WhereValue  interface{}
 }
 
 func (s *DeleteStatement) Exec(db interfaces.Database) error {
@@ -391,7 +391,7 @@ func parseDelete(query string) (*DeleteStatement, error) {
 
 		// Handle quoted string values
 		if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
-			stmt.WhereValue = value[1:len(value)-1]
+			stmt.WhereValue = value[1 : len(value)-1]
 		} else {
 			// Try to convert to number if not a string
 			if floatVal, err := strconv.ParseFloat(value, 64); err == nil {

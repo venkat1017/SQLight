@@ -1,13 +1,13 @@
 package db
 
-import "sqlite-clone/pkg/interfaces"
+import "sqlight/pkg/interfaces"
 
 // Cursor represents a cursor for iterating over records in a table
 type Cursor struct {
-	table     *Table
-	current   *interfaces.Record
-	position  int
-	records   []*interfaces.Record
+	table    *Table
+	current  *interfaces.Record
+	position int
+	records  []*interfaces.Record
 }
 
 // NewCursor creates a new cursor for the table

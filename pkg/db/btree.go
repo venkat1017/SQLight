@@ -1,7 +1,7 @@
 package db
 
 import (
-	"sqlite-clone/pkg/interfaces"
+	"sqlight/pkg/interfaces"
 )
 
 const (
@@ -82,7 +82,7 @@ func (n *Node) findPosition(key int) int {
 
 func (t *BTree) insertIntoLeaf(node *Node, key int, record *interfaces.Record) {
 	pos := node.findPosition(key)
-	
+
 	// Insert key
 	node.Keys = append(node.Keys, 0)
 	copy(node.Keys[pos+1:], node.Keys[pos:])

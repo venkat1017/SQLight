@@ -2,17 +2,17 @@ package tests
 
 import (
 	"os"
-	"sqlite-clone/pkg/db"
-	"sqlite-clone/pkg/interfaces"
-	"testing"
 	"path/filepath"
+	"sqlight/pkg/db"
+	"sqlight/pkg/interfaces"
+	"testing"
 )
 
 func TestDatabase(t *testing.T) {
 	// Create a temporary database file for testing
 	tmpFile := "test_db.json"
 	defer os.Remove(tmpFile)
-	
+
 	database := db.NewDatabase(tmpFile)
 
 	// Test CREATE TABLE with data types
@@ -78,9 +78,9 @@ func TestDatabase(t *testing.T) {
 	}
 
 	// Test UPDATE
-	err = database.UpdateTable("users", 
-		map[string]interface{}{"name": "Alice Smith"}, 
-		"id", 
+	err = database.UpdateTable("users",
+		map[string]interface{}{"name": "Alice Smith"},
+		"id",
 		float64(1))
 	if err != nil {
 		t.Fatalf("Error updating record: %v", err)
@@ -97,9 +97,9 @@ func TestDatabase(t *testing.T) {
 	}
 
 	// Test invalid update
-	err = database.UpdateTable("users", 
-		map[string]interface{}{"name": "Bob"}, 
-		"id", 
+	err = database.UpdateTable("users",
+		map[string]interface{}{"name": "Bob"},
+		"id",
 		float64(999))
 	if err == nil {
 		t.Error("Expected error when updating non-existent record")
