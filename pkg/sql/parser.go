@@ -2,513 +2,173 @@ package sql
 
 import (
 	"fmt"
-	"os"
+	"regexp"
 	"sqlight/pkg/interfaces"
-	"strconv"
 	"strings"
 )
 
-// Update Statement to use the interface
-type Statement interface {
-	Exec(db interfaces.Database) error
-}
+// ParseSQL parses a SQL statement and returns a Statement interface
+func ParseSQL(sql string) (interfaces.Statement, error) {
+	// Trim whitespace and semicolon
+	sql = strings.TrimSpace(sql)
+	sql = strings.TrimSuffix(sql, ";")
 
-// CreateStatement represents a CREATE TABLE command
-type CreateStatement struct {
-	Table   string
-	Columns []interfaces.ColumnDef
-}
+	// Convert to uppercase for easier parsing
+	upperSQL := strings.ToUpper(sql)
 
-func (s *CreateStatement) Exec(db interfaces.Database) error {
-	return db.CreateTable(s.Table, s.Columns)
-}
-
-// InsertStatement represents an INSERT command
-type InsertStatement struct {
-	Table  string
-	Values []interface{}
-}
-
-func (s *InsertStatement) Exec(db interfaces.Database) error {
-	// Get column information
-	columns, err := db.GetTableColumns(s.Table)
-	if err != nil {
-		return err
+	if strings.HasPrefix(upperSQL, "CREATE TABLE") {
+		return parseCreateTable(sql)
+	} else if strings.HasPrefix(upperSQL, "INSERT INTO") {
+		return parseInsert(sql)
+	} else if strings.HasPrefix(upperSQL, "SELECT") {
+		return parseSelect(sql)
 	}
 
-	// Create a map for the record's columns
-	recordColumns := make(map[string]interface{})
-	for i, col := range columns {
-		if i < len(s.Values) {
-			recordColumns[col] = s.Values[i]
-		}
-	}
-
-	// Create new record with the columns map
-	record := interfaces.NewRecord(recordColumns)
-
-	return db.InsertIntoTable(s.Table, record)
+	return nil, fmt.Errorf("unsupported SQL statement")
 }
 
-// SelectStatement represents a SELECT query
-type SelectStatement struct {
-	Table      string
-	WhereCol   string
-	WhereValue interface{}
-}
-
-func (s *SelectStatement) Exec(db interfaces.Database) error {
-	records, err := db.SelectFromTable(s.Table, s.WhereCol, s.WhereValue)
-	if err != nil {
-		return err
-	}
-
-	// If no records found
-	if len(records) == 0 {
-		fmt.Println("No records found")
-		return nil
-	}
-
-	// Get column information
-	columns, err := db.GetTableColumns(s.Table)
-	if err != nil {
-		return err
-	}
-
-	// Print records
-	printRecords(columns, records)
-	return nil
-}
-
-// ExitStatement represents an EXIT command
-type ExitStatement struct{}
-
-func (s *ExitStatement) Exec(db interfaces.Database) error {
-	fmt.Println("Exiting the SQLite Clone. Goodbye!")
-	os.Exit(0)
-	return nil
-}
-
-// UpdateStatement represents an UPDATE command
-type UpdateStatement struct {
-	TableName   string
-	SetColumns  map[string]interface{}
-	WhereColumn string
-	WhereValue  interface{}
-}
-
-func (s *UpdateStatement) Exec(db interfaces.Database) error {
-	return db.UpdateTable(s.TableName, s.SetColumns, s.WhereColumn, s.WhereValue)
-}
-
-// DeleteStatement represents a DELETE command
-type DeleteStatement struct {
-	TableName   string
-	WhereColumn string
-	WhereValue  interface{}
-}
-
-func (s *DeleteStatement) Exec(db interfaces.Database) error {
-	return db.DeleteFromTable(s.TableName, s.WhereColumn, s.WhereValue)
-}
-
-// BeginStatement represents a BEGIN TRANSACTION command
-type BeginStatement struct{}
-
-func (s *BeginStatement) Exec(db interfaces.Database) error {
-	return db.Begin()
-}
-
-// CommitStatement represents a COMMIT command
-type CommitStatement struct{}
-
-func (s *CommitStatement) Exec(db interfaces.Database) error {
-	return db.Commit()
-}
-
-// RollbackStatement represents a ROLLBACK command
-type RollbackStatement struct{}
-
-func (s *RollbackStatement) Exec(db interfaces.Database) error {
-	return db.Rollback()
-}
-
-// Helper function to print records in table format
-func printRecords(columns []string, records []interface{}) {
-	// Calculate column widths
-	widths := make(map[string]int)
-	for _, col := range columns {
-		widths[col] = len(col)
-	}
-
-	// Find maximum width for each column
-	for _, record := range records {
-		if r, ok := record.(*interfaces.Record); ok {
-			for col, value := range r.Columns {
-				width := len(fmt.Sprintf("%v", value))
-				if width > widths[col] {
-					widths[col] = width
-				}
-			}
-		}
-	}
-
-	// Print header
-	printSeparator(columns, widths)
-	printRow(columns, columns, widths) // Column names as header
-	printSeparator(columns, widths)
-
-	// Print records
-	for _, record := range records {
-		if r, ok := record.(*interfaces.Record); ok {
-			values := make([]string, len(columns))
-			for i, col := range columns {
-				values[i] = fmt.Sprintf("%v", r.Columns[col])
-			}
-			printRow(columns, values, widths)
-		}
-	}
-	printSeparator(columns, widths)
-}
-
-func printRecord(columns []string, record interface{}) {
-	printRecords(columns, []interface{}{record})
-}
-
-func printSeparator(columns []string, widths map[string]int) {
-	for _, col := range columns {
-		fmt.Print("+")
-		fmt.Print(strings.Repeat("-", widths[col]+2))
-	}
-	fmt.Println("+")
-}
-
-func printRow(columns []string, values []string, widths map[string]int) {
-	for i, col := range columns {
-		fmt.Printf("| %-*s ", widths[col], values[i])
-	}
-	fmt.Println("|")
-}
-
-// Parser represents a SQL parser
-type Parser struct {
-	db interfaces.Database
-}
-
-// NewParser creates a new SQL parser
-func NewParser(db interfaces.Database) *Parser {
-	return &Parser{db: db}
-}
-
-// Parse parses and executes a SQL command
-func (p *Parser) Parse(query string) (string, error) {
-	stmt, err := ParseSQL(query)
-	if err != nil {
-		return "", err
-	}
-
-	err = stmt.Exec(p.db)
-	if err != nil {
-		return "", err
-	}
-
-	return "OK", nil
-}
-
-// ParseSQL parses SQL commands
-func ParseSQL(query string) (Statement, error) {
-	// Remove semicolon if present
-	query = strings.TrimSuffix(query, ";")
-	query = strings.TrimSpace(query)
-
-	// Convert to uppercase for case-insensitive comparison
-	upperQuery := strings.ToUpper(query)
-
-	if strings.HasPrefix(upperQuery, "CREATE TABLE") {
-		return parseCreateTable(query)
-	} else if strings.HasPrefix(upperQuery, "INSERT INTO") {
-		return parseInsert(query)
-	} else if strings.HasPrefix(upperQuery, "SELECT") {
-		return parseSelect(query)
-	} else if strings.HasPrefix(upperQuery, "UPDATE") {
-		return parseUpdate(query)
-	} else if strings.HasPrefix(upperQuery, "DELETE FROM") {
-		return parseDelete(query)
-	} else if upperQuery == "BEGIN TRANSACTION" || upperQuery == "BEGIN" {
-		return &BeginStatement{}, nil
-	} else if upperQuery == "COMMIT" {
-		return &CommitStatement{}, nil
-	} else if upperQuery == "ROLLBACK" {
-		return &RollbackStatement{}, nil
-	} else if upperQuery == "EXIT" {
-		return &ExitStatement{}, nil
-	}
-
-	return nil, fmt.Errorf("unknown command: %s", query)
-}
-
-func parseCreateTable(query string) (*CreateStatement, error) {
-	// Parse CREATE TABLE query
-	words := strings.Fields(query)
-	if len(words) < 4 || strings.ToUpper(words[1]) != "TABLE" {
+// parseCreateTable parses a CREATE TABLE statement
+func parseCreateTable(sql string) (*interfaces.CreateStatement, error) {
+	// Regular expression for CREATE TABLE
+	re := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(\w+)\s*\((.*)\)`)
+	matches := re.FindStringSubmatch(sql)
+	if len(matches) != 3 {
 		return nil, fmt.Errorf("invalid CREATE TABLE syntax")
 	}
 
-	tableName := words[2]
-	columnsStr := strings.Join(words[3:], " ")
+	tableName := matches[1]
+	columnDefs := matches[2]
 
-	// Parse column definitions
-	if !strings.HasPrefix(columnsStr, "(") || !strings.HasSuffix(columnsStr, ")") {
-		return nil, fmt.Errorf("column definitions must be enclosed in parentheses")
+	// Split column definitions
+	columns := strings.Split(columnDefs, ",")
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("no columns specified")
 	}
 
-	// Extract column names and types
-	columnsStr = columnsStr[1 : len(columnsStr)-1]
-	columnDefs := strings.Split(columnsStr, ",")
-	columns := make([]interfaces.ColumnDef, len(columnDefs))
-	for i, def := range columnDefs {
-		parts := strings.Fields(def)
+	// Parse each column
+	parsedColumns := make([]interfaces.ColumnDef, 0, len(columns))
+	for _, col := range columns {
+		// Split column definition into parts
+		parts := strings.Fields(strings.TrimSpace(col))
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("invalid column definition: %s", def)
+			return nil, fmt.Errorf("invalid column definition: %s", col)
 		}
-		columns[i] = interfaces.ColumnDef{
+
+		// Create column definition
+		column := interfaces.ColumnDef{
 			Name: parts[0],
-			Type: strings.ToUpper(parts[1]), // Store the type in uppercase
-		}
-	}
-
-	return &CreateStatement{Table: tableName, Columns: columns}, nil
-}
-
-func parseInsert(query string) (*InsertStatement, error) {
-	// Remove trailing semicolon if present
-	query = strings.TrimSuffix(query, ";")
-
-	// Parse INSERT query
-	words := strings.Fields(query)
-	if len(words) < 4 || strings.ToUpper(words[1]) != "INTO" {
-		return nil, fmt.Errorf("invalid INSERT syntax")
-	}
-
-	tableName := words[2]
-
-	// Find the VALUES keyword
-	valuesIndex := -1
-	for i, word := range words {
-		if strings.ToUpper(word) == "VALUES" {
-			valuesIndex = i
-			break
-		}
-	}
-
-	if valuesIndex == -1 || valuesIndex+1 >= len(words) {
-		return nil, fmt.Errorf("invalid INSERT syntax")
-	}
-
-	// Parse the values
-	valuesStr := strings.Join(words[valuesIndex+1:], " ")
-	parsedValues, err := parseValues(valuesStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &InsertStatement{Table: tableName, Values: parsedValues}, nil
-}
-
-func parseSelect(query string) (*SelectStatement, error) {
-	// Remove trailing semicolon if present
-	query = strings.TrimSuffix(query, ";")
-
-	// Parse SELECT query
-	words := strings.Fields(query)
-	if len(words) < 3 || strings.ToUpper(words[0]) != "SELECT" {
-		return nil, fmt.Errorf("invalid SELECT syntax")
-	}
-
-	// Check for * and FROM
-	if words[1] != "*" || strings.ToUpper(words[2]) != "FROM" {
-		return nil, fmt.Errorf("only SELECT * FROM is supported")
-	}
-
-	if len(words) < 4 {
-		return nil, fmt.Errorf("table name required after FROM")
-	}
-
-	tableName := words[3]
-	stmt := &SelectStatement{Table: tableName}
-
-	// Check for WHERE clause
-	if len(words) > 4 {
-		if len(words) < 8 || strings.ToUpper(words[4]) != "WHERE" || words[6] != "=" {
-			return nil, fmt.Errorf("WHERE clause must be in format: WHERE column = value")
+			Type: strings.ToUpper(parts[1]),
 		}
 
-		whereCol := strings.ToLower(words[5])
-		whereVal := words[7]
-
-		// Handle quoted string values
-		if strings.HasPrefix(whereVal, "'") && strings.HasSuffix(whereVal, "'") {
-			stmt.WhereCol = whereCol
-			stmt.WhereValue = whereVal[1 : len(whereVal)-1]
-		} else {
-			// Try to convert to number if not a string
-			if num, err := strconv.ParseFloat(whereVal, 64); err == nil {
-				stmt.WhereCol = whereCol
-				stmt.WhereValue = num
-			} else {
-				stmt.WhereCol = whereCol
-				stmt.WhereValue = whereVal
+		// Parse constraints
+		for i := 2; i < len(parts); i++ {
+			constraint := strings.ToUpper(parts[i])
+			switch constraint {
+			case "PRIMARY":
+				if i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "KEY" {
+					column.PrimaryKey = true
+					i++ // Skip next part
+				}
+			case "NOT":
+				if i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "NULL" {
+					column.NotNull = true
+					i++ // Skip next part
+				}
+			case "UNIQUE":
+				column.Unique = true
+			case "REFERENCES":
+				if i+1 < len(parts) {
+					column.References = parts[i+1]
+					i++ // Skip next part
+				}
 			}
 		}
+
+		parsedColumns = append(parsedColumns, column)
 	}
 
-	return stmt, nil
-}
-
-func parseDelete(query string) (*DeleteStatement, error) {
-	// Remove trailing semicolon if present
-	query = strings.TrimSuffix(query, ";")
-
-	// Parse DELETE query
-	words := strings.Fields(query)
-	if len(words) < 3 || strings.ToUpper(words[1]) != "FROM" {
-		return nil, fmt.Errorf("invalid DELETE syntax")
-	}
-
-	tableName := strings.ToLower(words[2])
-	stmt := &DeleteStatement{TableName: tableName}
-
-	// Parse WHERE clause if present
-	if len(words) > 3 {
-		if strings.ToUpper(words[3]) != "WHERE" || len(words) < 7 {
-			return nil, fmt.Errorf("invalid WHERE clause in DELETE")
-		}
-		stmt.WhereColumn = strings.ToLower(words[4])
-		if words[5] != "=" {
-			return nil, fmt.Errorf("WHERE clause must use = operator")
-		}
-		value := words[6]
-
-		// Handle quoted string values
-		if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
-			stmt.WhereValue = value[1 : len(value)-1]
-		} else {
-			// Try to convert to number if not a string
-			if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-				stmt.WhereValue = floatVal
-			} else {
-				stmt.WhereValue = value
-			}
-		}
-	}
-
-	return stmt, nil
-}
-
-func parseUpdate(query string) (*UpdateStatement, error) {
-	// Remove trailing semicolon if present
-	query = strings.TrimSuffix(query, ";")
-
-	// UPDATE table_name SET column1 = value1 WHERE column = value
-	parts := strings.Split(query, "WHERE")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("UPDATE statement must have a WHERE clause")
-	}
-
-	// Parse the main part (before WHERE)
-	mainParts := strings.Split(parts[0], "SET")
-	if len(mainParts) != 2 {
-		return nil, fmt.Errorf("invalid UPDATE statement format")
-	}
-
-	// Get table name
-	tablePart := strings.TrimSpace(mainParts[0])
-	if !strings.HasPrefix(strings.ToUpper(tablePart), "UPDATE") {
-		return nil, fmt.Errorf("invalid UPDATE statement format")
-	}
-	tableName := strings.TrimSpace(strings.TrimPrefix(tablePart, "UPDATE"))
-
-	// Parse SET clause
-	setColumns := make(map[string]interface{})
-	setPairs := strings.Split(strings.TrimSpace(mainParts[1]), ",")
-	for _, pair := range setPairs {
-		keyVal := strings.Split(strings.TrimSpace(pair), "=")
-		if len(keyVal) != 2 {
-			return nil, fmt.Errorf("invalid SET clause format")
-		}
-		key := strings.TrimSpace(keyVal[0])
-		val := strings.TrimSpace(keyVal[1])
-
-		// Handle quoted string values
-		if strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'") {
-			setColumns[key] = val[1 : len(val)-1]
-		} else {
-			// Try to parse as float64 for numeric values
-			if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
-				setColumns[key] = floatVal
-			} else {
-				setColumns[key] = val
-			}
-		}
-	}
-
-	// Parse WHERE clause
-	whereClause := strings.TrimSpace(parts[1])
-	whereParts := strings.Split(whereClause, "=")
-	if len(whereParts) != 2 {
-		return nil, fmt.Errorf("invalid WHERE clause format")
-	}
-
-	whereColumn := strings.TrimSpace(whereParts[0])
-	whereValue := strings.TrimSpace(whereParts[1])
-
-	// Handle quoted string values for whereValue
-	var whereValueInterface interface{}
-	if strings.HasPrefix(whereValue, "'") && strings.HasSuffix(whereValue, "'") {
-		whereValueInterface = whereValue[1 : len(whereValue)-1]
-	} else {
-		// Try to parse as float64 for numeric values
-		if floatVal, err := strconv.ParseFloat(whereValue, 64); err == nil {
-			whereValueInterface = floatVal
-		} else {
-			whereValueInterface = whereValue
-		}
-	}
-
-	return &UpdateStatement{
-		TableName:   tableName,
-		SetColumns:  setColumns,
-		WhereColumn: whereColumn,
-		WhereValue:  whereValueInterface,
+	return &interfaces.CreateStatement{
+		TableName: tableName,
+		Columns:   parsedColumns,
 	}, nil
 }
 
-// Helper function to parse values
-func parseValues(input string) ([]interface{}, error) {
-	input = strings.TrimSpace(input)
-	if !strings.HasPrefix(input, "(") || !strings.HasSuffix(input, ")") {
-		return nil, fmt.Errorf("values must be enclosed in parentheses")
+// parseInsert parses an INSERT statement
+func parseInsert(sql string) (*interfaces.InsertStatement, error) {
+	// Regular expression for INSERT
+	re := regexp.MustCompile(`(?i)INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)`)
+	matches := re.FindStringSubmatch(sql)
+	if len(matches) != 4 {
+		return nil, fmt.Errorf("invalid INSERT syntax")
 	}
 
-	// Remove parentheses
-	input = input[1 : len(input)-1]
-	parts := strings.Split(input, ",")
+	tableName := matches[1]
+	columns := strings.Split(matches[2], ",")
+	values := strings.Split(matches[3], ",")
 
-	values := make([]interface{}, len(parts))
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-		// Handle string values (quoted)
-		if strings.HasPrefix(part, "'") && strings.HasSuffix(part, "'") {
-			values[i] = part[1 : len(part)-1]
+	if len(columns) != len(values) {
+		return nil, fmt.Errorf("number of columns does not match number of values")
+	}
+
+	// Create values map
+	valueMap := make(map[string]interface{})
+	for i := range columns {
+		col := strings.TrimSpace(columns[i])
+		val := strings.TrimSpace(values[i])
+
+		// Remove quotes from string values
+		if strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'") {
+			val = strings.Trim(val, "'")
+			valueMap[col] = val
+		} else if val == "NULL" {
+			valueMap[col] = nil
 		} else {
-			// Number value
-			if num, err := strconv.Atoi(part); err == nil {
-				values[i] = num
+			// Try to parse as integer
+			var intVal int
+			if _, err := fmt.Sscanf(val, "%d", &intVal); err == nil {
+				valueMap[col] = intVal
 			} else {
-				return nil, fmt.Errorf("invalid number: %s", part)
+				valueMap[col] = val
 			}
 		}
 	}
 
-	return values, nil
+	return &interfaces.InsertStatement{
+		TableName: tableName,
+		Values:    valueMap,
+	}, nil
+}
+
+// parseSelect parses a SELECT statement
+func parseSelect(sql string) (*interfaces.SelectStatement, error) {
+	// Regular expression for SELECT
+	re := regexp.MustCompile(`(?i)SELECT\s+(.*?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?`)
+	matches := re.FindStringSubmatch(sql)
+	if len(matches) < 3 {
+		return nil, fmt.Errorf("invalid SELECT syntax")
+	}
+
+	// Parse columns
+	var columns []string
+	if matches[1] == "*" {
+		columns = []string{"*"}
+	} else {
+		columns = strings.Split(matches[1], ",")
+		for i := range columns {
+			columns[i] = strings.TrimSpace(columns[i])
+		}
+	}
+
+	// Create statement
+	stmt := &interfaces.SelectStatement{
+		TableName: matches[2],
+		Columns:   columns,
+	}
+
+	// Add WHERE clause if present
+	if len(matches) > 3 && matches[3] != "" {
+		stmt.Where = matches[3]
+	}
+
+	return stmt, nil
 }

@@ -5,289 +5,219 @@ import (
 	"fmt"
 	"os"
 	"sqlight/pkg/interfaces"
-	"sqlight/pkg/sql"
+	"sync"
 )
 
-// Verify Database implements the interface
-var _ interfaces.Database = (*Database)(nil)
-
-// Statement defines the interface for SQL statements
-type Statement interface {
-	Exec(db *Database) error
-}
-
-// SelectStatement represents a SELECT query
-type SelectStatement struct {
-	Table string
-}
-
-func (s *SelectStatement) Exec(db *Database) error {
-	return nil // Placeholder for Step 3
-}
-
-// InsertStatement represents an INSERT command
-type InsertStatement struct {
-	Table  string
-	Values []interface{}
-}
-
-func (s *InsertStatement) Exec(db *Database) error {
-	return nil // Placeholder for Step 3
-}
-
-// CreateStatement represents a CREATE TABLE command
-type CreateStatement struct {
-	Table   string
-	Columns []string
-}
-
-func (s *CreateStatement) Exec(db *Database) error {
-	return nil // Placeholder for Step 3
-}
-
-// Database holds the tables
+// Database represents a SQLite database
 type Database struct {
-	tables        map[string]*Table
-	file          string // Path to the database file
-	inTransaction bool
-	currentTx     *Transaction
+	tables map[string]*Table
+	mutex  sync.RWMutex
 }
 
-// Tables returns a copy of the tables map
-func (db *Database) Tables() map[string]*Table {
-	fmt.Printf("Getting tables: %v\n", db.tables)
-	return db.tables
+// DatabaseSnapshot represents the database state for persistence
+type DatabaseSnapshot struct {
+	Tables map[string]TableSnapshot `json:"tables"`
 }
 
-// SetTables allows setting the tables map directly
-func (db *Database) SetTables(tables map[string]*Table) {
-	db.tables = tables
+// TableSnapshot represents a table's state for persistence
+type TableSnapshot struct {
+	Name    string                         `json:"name"`
+	Columns []interfaces.ColumnDef         `json:"columns"`
+	Records map[string]map[string]interface{} `json:"records"`
 }
 
-// NewDatabase initializes a new Database and loads existing data from the file
-func NewDatabase(file string) *Database {
-	db := &Database{
+// NewDatabase creates a new database instance
+func NewDatabase() *Database {
+	return &Database{
 		tables: make(map[string]*Table),
-		file:   file,
-	}
-	db.load() // Load existing data from the file
-	return db
-}
-
-// Load data from the file
-func (db *Database) load() {
-	if _, err := os.Stat(db.file); err == nil {
-		file, err := os.Open(db.file)
-		if err != nil {
-			return
-		}
-		defer file.Close()
-
-		decoder := json.NewDecoder(file)
-		err = decoder.Decode(&db.tables)
-		if err != nil {
-			return
-		}
 	}
 }
 
-// Save data to the file
-func (db *Database) Save() {
-	fmt.Println("Saving database state:", db.tables) // Debugging output
+// Execute executes a SQL statement
+func (d *Database) Execute(stmt interfaces.Statement) (*interfaces.Result, error) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
-	file, err := os.Create(db.file)
-	if err != nil {
-		fmt.Println("Error creating database file:", err)
-		return
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	err = encoder.Encode(db.tables)
-	if err != nil {
-		fmt.Println("Error encoding database to JSON:", err)
-		return
+	switch s := stmt.(type) {
+	case *interfaces.CreateStatement:
+		return d.executeCreate(s)
+	case *interfaces.InsertStatement:
+		return d.executeInsert(s)
+	case *interfaces.SelectStatement:
+		return d.executeSelect(s)
+	default:
+		return nil, fmt.Errorf("unsupported statement type")
 	}
 }
 
-// Begin starts a new transaction
-func (db *Database) Begin() error {
-	if db.inTransaction {
-		return fmt.Errorf("transaction already in progress")
-	}
-
-	// Create a new transaction
-	tx := NewTransaction()
-	db.currentTx = tx
-
-	// Create a snapshot of the current state
-	db.currentTx.CreateSnapshot(db.tables)
-	db.inTransaction = true
-	return nil
-}
-
-// Commit commits the current transaction
-func (db *Database) Commit() error {
-	if !db.inTransaction {
-		return fmt.Errorf("no transaction in progress")
-	}
-
-	if db.currentTx == nil {
-		return fmt.Errorf("no active transaction")
-	}
-
-	// Save the changes to disk
-	db.Save()
-	db.currentTx = nil
-	db.inTransaction = false
-	return nil
-}
-
-// Rollback rolls back the current transaction
-func (db *Database) Rollback() error {
-	if !db.inTransaction {
-		return fmt.Errorf("no transaction in progress")
-	}
-
-	if db.currentTx == nil {
-		return fmt.Errorf("no active transaction")
-	}
-
-	// Restore the database state from the snapshot
-	for name, table := range db.currentTx.snapshot {
-		db.tables[name] = table.Clone()
-	}
-
-	// Handle deleted tables
-	for name := range db.currentTx.deleted {
-		delete(db.tables, name)
-	}
-
-	db.currentTx = nil
-	db.inTransaction = false
-	return nil
-}
-
-// CreateTable creates a new table with the specified columns
-func (db *Database) CreateTable(name string, columns []interfaces.ColumnDef) error {
-	fmt.Printf("Creating table: %s with columns: %v\n", name, columns)
-
+// executeCreate handles CREATE TABLE statements
+func (d *Database) executeCreate(stmt *interfaces.CreateStatement) (*interfaces.Result, error) {
 	// Check if table already exists
-	if _, exists := db.tables[name]; exists {
-		return fmt.Errorf("table %s already exists", name)
+	if _, exists := d.tables[stmt.TableName]; exists {
+		return nil, fmt.Errorf("table %s already exists", stmt.TableName)
 	}
 
-	table, err := NewTable(columns)
+	// Create new table
+	table, err := NewTable(stmt.Columns)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	db.tables[name] = table
-	return nil
+
+	// Set table name
+	table.SetName(stmt.TableName)
+
+	// Add table to database
+	d.tables[stmt.TableName] = table
+
+	return &interfaces.Result{
+		Success: true,
+		Message: fmt.Sprintf("Table %s created successfully", stmt.TableName),
+	}, nil
 }
 
-func (db *Database) GetTableColumns(name string) ([]string, error) {
-	if table, ok := db.tables[name]; ok {
-		return table.Columns(), nil
-	}
-	return nil, fmt.Errorf("table %s not found", name)
-}
-
-// InsertIntoTable inserts a record into a table
-func (db *Database) InsertIntoTable(name string, record *interfaces.Record) error {
-	table, exists := db.tables[name]
+// executeInsert handles INSERT statements
+func (d *Database) executeInsert(stmt *interfaces.InsertStatement) (*interfaces.Result, error) {
+	// Get table
+	table, exists := d.tables[stmt.TableName]
 	if !exists {
-		return fmt.Errorf("table %s does not exist", name)
+		return nil, fmt.Errorf("table %s does not exist", stmt.TableName)
 	}
 
-	return table.Insert(record)
+	// Create record from values
+	record := &interfaces.Record{
+		Columns: stmt.Values,
+	}
+
+	// Insert record
+	err := table.Insert(record)
+	if err != nil {
+		return nil, err
+	}
+
+	return &interfaces.Result{
+		Success: true,
+		Message: "Record inserted successfully",
+	}, nil
 }
 
-// SelectFromTable selects records from a table
-func (db *Database) SelectFromTable(name string, whereColumn string, whereValue interface{}) ([]interface{}, error) {
-	table, exists := db.tables[name]
+// executeSelect handles SELECT statements
+func (d *Database) executeSelect(stmt *interfaces.SelectStatement) (*interfaces.Result, error) {
+	// Get table
+	table, exists := d.tables[stmt.TableName]
+	if !exists {
+		return nil, fmt.Errorf("table %s does not exist", stmt.TableName)
+	}
+
+	// Get all records for now (we'll add filtering later)
+	records := table.GetRecords()
+
+	return &interfaces.Result{
+		Success: true,
+		Records: records,
+	}, nil
+}
+
+// GetTables returns all table names in the database
+func (d *Database) GetTables() []string {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	tables := make([]string, 0, len(d.tables))
+	for name := range d.tables {
+		tables = append(tables, name)
+	}
+	return tables
+}
+
+// GetTable returns a specific table by name
+func (d *Database) GetTable(name string) (interfaces.Table, error) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	table, exists := d.tables[name]
 	if !exists {
 		return nil, fmt.Errorf("table %s does not exist", name)
 	}
+	return table, nil
+}
 
-	records := table.Select()
-	result := make([]interface{}, len(records))
-	for i, r := range records {
-		result[i] = r
+// Save saves the database to a file
+func (d *Database) Save(filename string) error {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	// Create database snapshot
+	snapshot := DatabaseSnapshot{
+		Tables: make(map[string]TableSnapshot),
 	}
 
-	if whereColumn == "" {
-		return result, nil
-	}
+	for name, table := range d.tables {
+		records := table.GetRecords()
+		recordMap := make(map[string]map[string]interface{})
+		
+		for i, record := range records {
+			recordMap[fmt.Sprintf("record_%d", i)] = record.Columns
+		}
 
-	// Filter records based on where clause
-	var filtered []interface{}
-	for _, record := range result {
-		if r, ok := record.(*interfaces.Record); ok {
-			if val, exists := r.Columns[whereColumn]; exists {
-				// Convert both values to strings for comparison
-				valStr := fmt.Sprintf("%v", val)
-				whereStr := fmt.Sprintf("%v", whereValue)
-				if valStr == whereStr {
-					filtered = append(filtered, record)
-				}
-			}
+		snapshot.Tables[name] = TableSnapshot{
+			Name:    name,
+			Columns: table.GetColumnDefs(),
+			Records: recordMap,
 		}
 	}
 
-	return filtered, nil
-}
-
-// Add new method for finding specific records
-func (db *Database) FindInTable(name string, id int) (interface{}, error) {
-	if table, ok := db.tables[name]; ok {
-		record := table.Find(id)
-		if record == nil {
-			return nil, fmt.Errorf("record with id %d not found", id)
-		}
-		return record, nil
-	}
-	return nil, fmt.Errorf("table %s not found", name)
-}
-
-// DeleteFromTable deletes records from a table that match the where clause
-func (db *Database) DeleteFromTable(name string, whereCol string, whereVal interface{}) error {
-	if table, ok := db.tables[name]; ok {
-		return table.Delete(whereCol, whereVal)
-	}
-	return fmt.Errorf("table %s not found", name)
-}
-
-// UpdateTable updates records in a table that match the where clause
-func (db *Database) UpdateTable(name string, setColumns map[string]interface{}, whereCol string, whereVal interface{}) error {
-	if table, ok := db.tables[name]; ok {
-		return table.Update(setColumns, whereCol, whereVal)
-	}
-	return fmt.Errorf("table %s not found", name)
-}
-
-// Update Execute to match the interface
-func (db *Database) Execute(query string) error {
-	stmt, err := sql.ParseSQL(query)
+	// Marshal to JSON
+	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal database: %v", err)
 	}
-	if stmt != nil {
-		err = stmt.Exec(db)
-		if err != nil {
-			return err
-		}
-		// Save changes after successful execution
-		db.Save()
+
+	// Write to file
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("failed to write database file: %v", err)
 	}
+
 	return nil
 }
 
-func (db *Database) PrintState() {
-	for tableName, table := range db.tables {
-		fmt.Printf("Table: %s\n", tableName)
-		records := table.Select()
-		for _, record := range records {
-			fmt.Printf("Record: %+v\n", record)
-		}
+// Load loads the database from a file
+func (d *Database) Load(filename string) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	// Read file
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to read database file: %v", err)
 	}
+
+	// Unmarshal JSON
+	var snapshot DatabaseSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return fmt.Errorf("failed to unmarshal database: %v", err)
+	}
+
+	// Restore tables
+	d.tables = make(map[string]*Table)
+	for name, tableSnapshot := range snapshot.Tables {
+		// Create table
+		table, err := NewTable(tableSnapshot.Columns)
+		if err != nil {
+			return fmt.Errorf("failed to create table %s: %v", name, err)
+		}
+
+		// Set table name
+		table.SetName(name)
+
+		// Insert records
+		for _, record := range tableSnapshot.Records {
+			if err := table.Insert(&interfaces.Record{Columns: record}); err != nil {
+				return fmt.Errorf("failed to restore record in table %s: %v", name, err)
+			}
+		}
+
+		d.tables[name] = table
+	}
+
+	return nil
 }

@@ -1,40 +1,78 @@
 package interfaces
 
-// ColumnDef represents a column definition in a table
-type ColumnDef struct {
-	Name string
-	Type string // The data type as a string (e.g., "INTEGER", "TEXT")
-}
-
-// Record represents a database record with dynamic columns
-type Record struct {
-	Columns map[string]interface{} `json:"columns"`
-}
-
-// NewRecord creates a new record with the given columns
-func NewRecord(values map[string]interface{}) *Record {
-	return &Record{
-		Columns: values,
-	}
-}
-
-// Statement interface for SQL commands
+// Statement represents a SQL statement
 type Statement interface {
-	Exec(db Database) error
+	Type() string
 }
 
-// Database interface for SQL operations
-type Database interface {
-	// Table operations
-	CreateTable(name string, columns []ColumnDef) error
-	GetTableColumns(name string) ([]string, error)
-	InsertIntoTable(name string, record *Record) error
-	UpdateTable(name string, setColumns map[string]interface{}, whereColumn string, whereValue interface{}) error
-	DeleteFromTable(name string, whereColumn string, whereValue interface{}) error
-	SelectFromTable(name string, whereColumn string, whereValue interface{}) ([]interface{}, error)
+// CreateStatement represents a CREATE TABLE statement
+type CreateStatement struct {
+	TableName string
+	Columns   []ColumnDef
+}
 
-	// Transaction operations
-	Begin() error
-	Commit() error
-	Rollback() error
+func (s *CreateStatement) Type() string {
+	return "CREATE"
+}
+
+// InsertStatement represents an INSERT statement
+type InsertStatement struct {
+	TableName string
+	Values    map[string]interface{}
+}
+
+func (s *InsertStatement) Type() string {
+	return "INSERT"
+}
+
+// SelectStatement represents a SELECT statement
+type SelectStatement struct {
+	TableName string
+	Columns   []string
+	Where     string
+}
+
+func (s *SelectStatement) Type() string {
+	return "SELECT"
+}
+
+// Record represents a database record
+type Record struct {
+	Columns map[string]interface{}
+}
+
+// Result represents the result of executing a statement
+type Result struct {
+	Success bool
+	Message string
+	Records []*Record
+}
+
+// ColumnDef represents a column definition
+type ColumnDef struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	PrimaryKey bool   `json:"primary_key,omitempty"`
+	NotNull    bool   `json:"not_null,omitempty"`
+	Unique     bool   `json:"unique,omitempty"`
+	References string `json:"references,omitempty"`
+}
+
+// Table represents a database table
+type Table interface {
+	GetName() string
+	Insert(record *Record) error
+	GetRecords() []*Record
+	GetColumns() []string
+	GetColumnDefs() []ColumnDef
+	Clone() Table
+}
+
+// Database represents a database
+type Database interface {
+	Execute(stmt Statement) (*Result, error)
+	GetTables() []string
+	GetTable(name string) (Table, error)
+	Save(filename string) error
+	Load(filename string) error
 }

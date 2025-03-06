@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLight Web Interface</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SQLight Web Interface</h1>
+        </header>
+        
+        <div class="content">
+            <div class="sidebar">
+                <h2>Tables</h2>
+                <ul id="tableList"></ul>
+            </div>
+            
+            <div class="main">
+                <div class="query-section">
+                    <textarea id="queryInput" placeholder="Enter your SQL query here..."></textarea>
+                    <button id="runQuery">Run Query</button>
+                </div>
+                
+                <div class="results-section">
+                    <div id="success" class="success"></div>
+                    <div id="error" class="error"></div>
+                    <div id="results"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
