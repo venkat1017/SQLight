@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"sqlight/pkg/interfaces"
 )
 
@@ -299,4 +300,116 @@ func (t *BTree) Search(key int) *interfaces.Record {
 	}
 
 	return nil
+}
+
+// BTreeSimple represents a simple B-tree for record storage
+type BTreeSimple struct {
+	root *NodeSimple
+}
+
+// NodeSimple represents a node in the B-tree
+type NodeSimple struct {
+	key    int
+	record *interfaces.Record
+	left   *NodeSimple
+	right  *NodeSimple
+}
+
+// NewBTreeSimple creates a new B-tree
+func NewBTreeSimple() *BTreeSimple {
+	return &BTreeSimple{
+		root: nil,
+	}
+}
+
+// Insert adds a record to the B-tree
+func (bt *BTreeSimple) Insert(key int, record *interfaces.Record) error {
+	// Check if key already exists
+	if bt.Search(key) != nil {
+		return fmt.Errorf("record with key %d already exists", key)
+	}
+
+	// Create a new node
+	newNode := &NodeSimple{
+		key:    key,
+		record: record,
+		left:   nil,
+		right:  nil,
+	}
+
+	// If tree is empty, set new node as root
+	if bt.root == nil {
+		bt.root = newNode
+		return nil
+	}
+
+	// Otherwise, insert into the tree
+	return bt.insertNode(bt.root, newNode)
+}
+
+// insertNode recursively inserts a node into the B-tree
+func (bt *BTreeSimple) insertNode(root, newNode *NodeSimple) error {
+	if newNode.key < root.key {
+		if root.left == nil {
+			root.left = newNode
+			return nil
+		}
+		return bt.insertNode(root.left, newNode)
+	} else if newNode.key > root.key {
+		if root.right == nil {
+			root.right = newNode
+			return nil
+		}
+		return bt.insertNode(root.right, newNode)
+	}
+	
+	// Key already exists (should not happen due to the check in Insert)
+	return fmt.Errorf("record with key %d already exists", newNode.key)
+}
+
+// Search finds a record by key
+func (bt *BTreeSimple) Search(key int) *interfaces.Record {
+	if bt.root == nil {
+		return nil
+	}
+	
+	node := bt.searchNode(bt.root, key)
+	if node == nil {
+		return nil
+	}
+	
+	return node.record
+}
+
+// searchNode recursively searches for a node by key
+func (bt *BTreeSimple) searchNode(root *NodeSimple, key int) *NodeSimple {
+	if root == nil {
+		return nil
+	}
+	
+	if key == root.key {
+		return root
+	} else if key < root.key {
+		return bt.searchNode(root.left, key)
+	} else {
+		return bt.searchNode(root.right, key)
+	}
+}
+
+// Scan returns all records in the B-tree (in-order traversal)
+func (bt *BTreeSimple) Scan() []*interfaces.Record {
+	records := make([]*interfaces.Record, 0)
+	bt.inOrderTraversal(bt.root, &records)
+	return records
+}
+
+// inOrderTraversal performs an in-order traversal of the B-tree
+func (bt *BTreeSimple) inOrderTraversal(root *NodeSimple, records *[]*interfaces.Record) {
+	if root == nil {
+		return
+	}
+	
+	bt.inOrderTraversal(root.left, records)
+	*records = append(*records, root.record)
+	bt.inOrderTraversal(root.right, records)
 }

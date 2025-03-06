@@ -1,1 +1,58 @@
-{"users":{"columns":[{"name":"id","type":"INTEGER"},{"name":"name","type":"TEXT"}],"records":{"3":{"id":3,"name":"Alan"},"4":{"id":4,"name":"David"}}}}
+{
+  "tables": {
+    "employee": {
+      "name": "employee",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "TEXT"
+        },
+        {
+          "name": "email",
+          "type": "TEXT"
+        }
+      ],
+      "records": {
+        "record_0": {
+          "email": "john@example.com",
+          "id": 1,
+          "name": "John Doe"
+        }
+      }
+    },
+    "users": {
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "type": "TEXT"
+        },
+        {
+          "name": "email",
+          "type": "TEXT"
+        }
+      ],
+      "records": {
+        "record_0": {
+          "email": "john@example.com",
+          "id": 1,
+          "name": "John Doe"
+        },
+        "record_1": {
+          "email": "test @example.com",
+          "id": 2,
+          "name": "venkat"
+        }
+      }
+    }
+  }
+}

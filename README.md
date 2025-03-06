@@ -1,29 +1,33 @@
-# SQLight is a lightweight version of SQLite in Go
+# SQLight - A Modern SQLite Clone with Web Interface
 
-A lightweight SQLite clone implemented in Go that supports basic SQL operations. This project demonstrates creating a simple but functional database system supporting CRUD operations (Create, Read, Update, Delete) and data type validation.
+A lightweight SQLite clone implemented in Go that supports basic SQL operations through both a command-line interface and a modern web interface. This project demonstrates creating a simple but functional database system with persistent storage and a clean UI.
 
 ## Features
 
+- **Dual Interface Support**:
+  - Modern Web Interface with real-time query execution
+  - Traditional Command Line Interface
+  
 - **SQL Command Support**:
   - `CREATE TABLE` - Create tables with specified columns and data types
   - `INSERT INTO` - Insert records into tables
-  - `SELECT` - Query records with WHERE clause support
-  - `UPDATE` - Update existing records
-  - `DELETE` - Delete records from tables
+  - `SELECT` - Query records from tables
+  - More commands coming soon!
 
 - **Data Types**:
   - `INTEGER` - Whole numbers
   - `TEXT` - String values
-  - `BOOLEAN` - True/False values
-  - `DATETIME` - Date and time values
+  - More types coming soon!
 
 - **Additional Features**:
   - Case-insensitive SQL commands
   - Persistent storage using JSON
   - Data type validation
-  - B-tree index for efficient lookups
-  - Debug logging support
-  - Clean command-line interface
+  - Clean, modern web interface
+  - Real-time query execution
+  - Table list sidebar
+  - Success/Error messages
+  - Keyboard shortcuts (Ctrl+Enter/Cmd+Enter to run queries)
 
 ## Installation
 
@@ -35,18 +39,42 @@ cd sqlight
 
 2. Build the project:
 ```bash
+# Build CLI version
 go build -o sqlight ./cmd/main.go
+
+# Build web version
+go build -o sqlightweb ./web/main.go
 ```
 
 ## Usage
 
-Run the program:
+### Web Interface
+
+1. Start the web server:
+```bash
+./sqlightweb
+# Or run directly with Go
+go run web/main.go
+```
+
+2. Open your browser and visit:
+```
+http://localhost:8081
+```
+
+3. Use the web interface to:
+- Write and execute SQL queries
+- View table list in the sidebar
+- Click on tables to auto-fill SELECT queries
+- See success/error messages
+- View query results in a formatted table
+
+### Command Line Interface
+
+Run the CLI version:
 ```bash
 # Basic usage
 ./sqlight
-
-# With debug logging enabled
-./sqlight -debug
 
 # With custom database file
 ./sqlight -db mydb.json
@@ -56,57 +84,45 @@ Run the program:
 
 1. Create a table:
 ```sql
-CREATE TABLE users (id INTEGER, name TEXT, email TEXT);
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE
+);
 ```
 
 2. Insert records:
 ```sql
-INSERT INTO users VALUES (1, 'Alice', 'alice@email.com');
-INSERT INTO users VALUES (2, 'Bob', 'bob@email.com');
+INSERT INTO users (id, name, email) VALUES (1, 'John Doe', 'john@example.com');
 ```
 
 3. Query records:
 ```sql
 -- Select all records
 SELECT * FROM users;
-
--- Select with WHERE clause
-SELECT * FROM users WHERE id = 1;
-SELECT * FROM users WHERE name = 'Alice';
 ```
-
-4. Update records:
-```sql
-UPDATE users SET name = 'Alice Smith' WHERE id = 1;
-```
-
-5. Delete records:
-```sql
-DELETE FROM users WHERE id = 2;
-```
-
-### Additional Commands
-- Type `help` to see available commands and usage tips
-- Type `exit` or `quit` to safely exit the program
-- Use Ctrl+C to exit safely at any time
 
 ## Project Structure
 
 ```
 sqlight/
 ├── cmd/
-│   └── main.go           # Main application entry point
+│   └── main.go           # CLI application entry
+├── web/
+│   ├── main.go          # Web server entry
+│   └── static/          # Web interface files
+│       ├── index.html   # Main HTML page
+│       ├── styles.css   # CSS styles
+│       └── script.js    # Frontend JavaScript
 ├── pkg/
-│   ├── db/
-│   │   ├── database.go   # Database operations
-│   │   ├── table.go      # Table operations
-│   │   └── btree.go      # B-tree implementation
-│   ├── sql/
-│   │   └── parser.go     # SQL parser
-│   ├── types/
-│   │   └── datatypes/    # Data type implementations
-│   └── logger/
-│       └── logger.go     # Logging utilities
+│   ├── db/             # Database implementation
+│   │   ├── database.go # Database operations
+│   │   ├── table.go    # Table operations
+│   │   └── cursor.go   # Record cursor
+│   ├── sql/            # SQL parsing
+│   │   └── parser.go   # SQL parser
+│   └── interfaces/     # Core interfaces
+│       └── interfaces.go
 └── README.md
 ```
 
@@ -114,6 +130,7 @@ sqlight/
 
 ### Prerequisites
 - Go 1.16 or later
+- Modern web browser for web interface
 - Any text editor or IDE
 
 ### Running Tests
@@ -121,11 +138,11 @@ sqlight/
 go test ./...
 ```
 
-### Debug Mode
-Run with the `-debug` flag to enable detailed logging:
-```bash
-./sqlight -debug
-```
+### Browser Support
+The web interface works best with:
+- Chrome/Edge (latest versions)
+- Firefox (latest version)
+- Safari (latest version)
 
 ## Contributing
 
@@ -135,6 +152,16 @@ Run with the `-debug` flag to enable detailed logging:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### Areas for Contribution
+- Additional SQL command support (UPDATE, DELETE)
+- More data types (FLOAT, DATETIME, etc.)
+- Improved SQL parsing
+- Query optimization
+- Additional indexes
+- UI/UX improvements
+- Documentation
+- Tests
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -143,4 +170,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Inspired by [SQLite](https://sqlite.org/)
 - Built using Go's standard library
-- Uses B-tree data structure for efficient indexing
+- Modern web interface using vanilla JavaScript

@@ -65,7 +65,7 @@ func main() {
 
 	// Print welcome message
 	fmt.Println(banner)
-	fmt.Println("Welcome to SQLite Clone! Type 'help' for usage information.")
+	fmt.Println("Welcome to SQLight! Type 'help' for usage information.")
 	fmt.Println("Using database file:", *dbFile)
 
 	// Start a goroutine to handle signals

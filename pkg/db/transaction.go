@@ -1,38 +1,66 @@
 package db
 
+import (
+	"sqlight/pkg/interfaces"
+	"sync"
+)
+
 // Transaction represents a database transaction
 type Transaction struct {
-	snapshot map[string]*Table // Snapshot of tables at transaction start
-	deleted  map[string]bool   // Tables marked for deletion
+	db      *Database
+	tables  map[string]*Table
+	mutex   sync.RWMutex
+	started bool
 }
 
 // NewTransaction creates a new transaction
-func NewTransaction() *Transaction {
+func NewTransaction(db *Database) *Transaction {
 	return &Transaction{
-		snapshot: make(map[string]*Table),
-		deleted:  make(map[string]bool),
+		db:     db,
+		tables: make(map[string]*Table),
 	}
 }
 
-// CreateSnapshot creates a snapshot of the current database state
-func (tx *Transaction) CreateSnapshot(tables map[string]*Table) {
-	tx.snapshot = make(map[string]*Table)
-	for name, table := range tables {
-		tx.snapshot[name] = table.Clone()
+// Begin starts the transaction
+func (t *Transaction) Begin() error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if t.started {
+		return nil
 	}
-}
 
-// MarkForDeletion marks a table for deletion
-func (tx *Transaction) MarkForDeletion(tableName string) {
-	tx.deleted[tableName] = true
-}
-
-// IsMarkedForDeletion checks if a table is marked for deletion
-func (tx *Transaction) IsMarkedForDeletion(tableName string) bool {
-	return tx.deleted[tableName]
-}
-
-// Commit applies the changes in the transaction
-func (tx *Transaction) Commit() error {
+	t.started = true
 	return nil
+}
+
+// Commit commits the transaction
+func (t *Transaction) Commit() error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if !t.started {
+		return nil
+	}
+
+	t.started = false
+	return nil
+}
+
+// Rollback rolls back the transaction
+func (t *Transaction) Rollback() error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if !t.started {
+		return nil
+	}
+
+	t.started = false
+	return nil
+}
+
+// Execute executes a statement within the transaction
+func (t *Transaction) Execute(stmt interfaces.Statement) (*interfaces.Result, error) {
+	return t.db.Execute(stmt)
 }
