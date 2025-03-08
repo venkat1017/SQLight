@@ -61,6 +61,12 @@ This project demonstrates core database concepts including SQL parsing, query ex
 - Keyboard shortcuts (Ctrl+Enter/Cmd+Enter to run queries)
 - Responsive design for desktop and tablet use
 
+### Demo
+
+<div align="center">
+  <img src="images/SQLight_demo.gif" alt="SQLight Demo" width="800">
+</div>
+
 ## 🚀 Installation
 
 ### Prerequisites
@@ -72,8 +78,8 @@ This project demonstrates core database concepts including SQL parsing, query ex
 
 1. **Clone the repository**:
 ```bash
-git clone https://github.com/venkat1017/litesqlite.git
-cd litesqlite
+git clone https://github.com/venkat1017/sqlight.git
+cd sqlight
 ```
 
 2. **Build the project**:
