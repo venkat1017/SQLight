@@ -1,19 +1,232 @@
 package main
 
 import (
-	"bufio"
-	"flag"
-	"fmt"
-	"os"
-	"os/signal"
-	"sqlight/pkg/db"
-	"sqlight/pkg/logger"
-	"sqlight/pkg/sql"
-	"strings"
-	"syscall"
+    "bufio"
+    "fmt"
+    "io/ioutil"
+    "os"
+    "regexp"
+    "strings"
+
+    "sqlight/pkg/db"
+    "sqlight/pkg/sql"
 )
 
-const banner = `
+func main() {
+    // Print welcome message
+    printWelcome()
+
+    // Initialize database
+    database, err := db.NewDatabase("database.json")
+    if err != nil {
+        fmt.Printf("Error initializing database: %v\n", err)
+        return
+    }
+
+    // Check if a SQL file was provided as an argument
+    if len(os.Args) > 1 {
+        sqlFile := os.Args[1]
+        fmt.Printf("Executing SQL file: %s\n\n", sqlFile)
+        
+        // Read the file
+        content, err := ioutil.ReadFile(sqlFile)
+        if err != nil {
+            fmt.Printf("Error reading SQL file: %v\n", err)
+            return
+        }
+        
+        // Process the file content
+        fileContent := string(content)
+        
+        // Remove comments
+        re := regexp.MustCompile(`--.*`)
+        fileContent = re.ReplaceAllString(fileContent, "")
+        
+        // Split into statements
+        re = regexp.MustCompile(`;[\s\n]*`)
+        statements := re.Split(fileContent, -1)
+        
+        // Execute each statement
+        for _, stmt := range statements {
+            stmt = strings.TrimSpace(stmt)
+            if stmt == "" {
+                continue
+            }
+            
+            // Add semicolon back for parsing
+            stmt += ";"
+            
+            fmt.Printf("Executing: %s\n", stmt)
+            
+            // Parse and execute
+            parsedStmt, err := sql.Parse(stmt)
+            if err != nil {
+                fmt.Printf("Error parsing statement: %v\n", err)
+                continue
+            }
+            
+            // Skip empty statements (comments)
+            if parsedStmt == nil {
+                continue
+            }
+            
+            // Execute statement
+            result, err := database.Execute(parsedStmt)
+            if err != nil {
+                fmt.Printf("Error executing statement: %v\n", err)
+                continue
+            }
+            
+            // Print result
+            if result.IsSelect {
+                // Print table header
+                fmt.Print("| ")
+                for i, col := range result.Columns {
+                    fmt.Printf("%s", col)
+                    if i < len(result.Columns)-1 {
+                        fmt.Print(" | ")
+                    }
+                }
+                fmt.Print(" |\n")
+
+                // Print separator
+                fmt.Print("|")
+                for _, col := range result.Columns {
+                    fmt.Print(strings.Repeat("-", len(col)+2))
+                    fmt.Print("|")
+                }
+                fmt.Print("\n")
+
+                // Print records
+                for _, record := range result.Records {
+                    fmt.Print("| ")
+                    for i, col := range result.Columns {
+                        value := record.Columns[col]
+                        if value == nil {
+                            fmt.Print("NULL")
+                        } else {
+                            fmt.Printf("%v", value)
+                        }
+                        if i < len(result.Columns)-1 {
+                            fmt.Print(" | ")
+                        }
+                    }
+                    fmt.Print(" |\n")
+                }
+            } else if result.Message != "" {
+                fmt.Println(result.Message)
+            }
+            
+            fmt.Println()
+        }
+        
+        return
+    }
+
+    // Create a scanner to read input
+    scanner := bufio.NewScanner(os.Stdin)
+    var currentCommand string
+
+    fmt.Print("> ")
+    for scanner.Scan() {
+        line := scanner.Text()
+
+        // Skip empty lines
+        if strings.TrimSpace(line) == "" {
+            fmt.Print("> ")
+            continue
+        }
+
+        // Append line to current command
+        if currentCommand != "" {
+            currentCommand += "\n"
+        }
+        currentCommand += line
+
+        // Check if command is complete (ends with semicolon)
+        if !strings.HasSuffix(strings.TrimSpace(currentCommand), ";") {
+            fmt.Print("... ")
+            continue
+        }
+
+        // Parse and execute command
+        stmt, err := sql.Parse(currentCommand)
+        if err != nil {
+            fmt.Printf("Error parsing command '%s': %v\n", currentCommand, err)
+            currentCommand = ""
+            fmt.Print("> ")
+            continue
+        }
+
+        // Skip empty statements (comments)
+        if stmt == nil {
+            currentCommand = ""
+            fmt.Print("> ")
+            continue
+        }
+
+        // Execute statement
+        result, err := database.Execute(stmt)
+        if err != nil {
+            fmt.Printf("Error executing command '%s': %v\n", currentCommand, err)
+            currentCommand = ""
+            fmt.Print("> ")
+            continue
+        }
+
+        // Print result
+        if result.IsSelect {
+            // Print table header
+            fmt.Print("| ")
+            for i, col := range result.Columns {
+                fmt.Printf("%s", col)
+                if i < len(result.Columns)-1 {
+                    fmt.Print(" | ")
+                }
+            }
+            fmt.Print(" |\n")
+
+            // Print separator
+            fmt.Print("|")
+            for _, col := range result.Columns {
+                fmt.Print(strings.Repeat("-", len(col)+2))
+                fmt.Print("|")
+            }
+            fmt.Print("\n")
+
+            // Print records
+            for _, record := range result.Records {
+                fmt.Print("| ")
+                for i, col := range result.Columns {
+                    value := record.Columns[col]
+                    if value == nil {
+                        fmt.Print("NULL")
+                    } else {
+                        fmt.Printf("%v", value)
+                    }
+                    if i < len(result.Columns)-1 {
+                        fmt.Print(" | ")
+                    }
+                }
+                fmt.Print(" |\n")
+            }
+        } else if result.Message != "" {
+            fmt.Println(result.Message)
+        }
+
+        currentCommand = ""
+        fmt.Print("> ")
+    }
+
+    if err := scanner.Err(); err != nil {
+        fmt.Printf("Error reading input: %v\n", err)
+    }
+
+    fmt.Println("\nINFO: \nExiting due to EOF. Goodbye!")
+}
+
+func printWelcome() {
+    welcome := `
 ······································································
 : ________  ________  ___       ___  ________  ___  ___  _________   :
 :|\   ____\|\   __  \|\  \     |\  \|\   ____\|\  \|\  \|\___   ___\ :
@@ -25,99 +238,7 @@ const banner = `
 :   \|_________|     \|__|                                           :
 ······································································
 `
-const helpText = `
-Available Commands:
-  CREATE TABLE users (id INTEGER, name TEXT, email TEXT)  - Create a new table
-  INSERT INTO users VALUES (1, 'Alice', 'alice@email.com') - Insert a record
-  SELECT * FROM users                                      - Select all records
-  SELECT * FROM users WHERE id = 1                         - Select by ID
-  SELECT * FROM users WHERE name = 'Alice'                 - Select by name
-  UPDATE users SET name = 'Alice Smith' WHERE id = 1       - Update records
-  DELETE FROM users WHERE id = 1                           - Delete records
-  exit                                                     - Exit the program
-  help                                                     - Show this help message
-
-Tips:
-  - String values must be enclosed in single quotes ('value')
-  - Commands are case-insensitive
-  - Commands can end with or without a semicolon (;)
-  - Use Ctrl+C to exit safely at any time
-`
-
-func main() {
-	// Parse command line flags
-	debug := flag.Bool("debug", false, "Enable debug logging")
-	dbFile := flag.String("db", "database.json", "Database file path")
-	flag.Parse()
-
-	// Set up logging
-	logger.SetDebug(*debug)
-
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Initialize database
-	database := db.NewDatabase(*dbFile)
-	defer database.Save()
-
-	reader := bufio.NewReader(os.Stdin)
-
-	// Print welcome message
-	fmt.Println(banner)
-	fmt.Println("Welcome to SQLight! Type 'help' for usage information.")
-	fmt.Println("Using database file:", *dbFile)
-
-	// Start a goroutine to handle signals
-	go func() {
-		<-sigChan
-		logger.Infof("\nReceived interrupt signal. Saving and exiting...")
-		database.Save()
-		os.Exit(0)
-	}()
-
-	// Main input loop
-	for {
-		fmt.Print("\n> ") // Cleaner prompt
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			if err.Error() == "EOF" {
-				logger.Infof("\nExiting due to EOF. Goodbye!")
-				break
-			}
-			logger.Errorf("Error reading input: %v", err)
-			continue
-		}
-
-		// Trim the input
-		input = strings.TrimSpace(input)
-
-		// Skip empty input
-		if input == "" {
-			continue
-		}
-
-		// Handle special commands
-		switch strings.ToLower(input) {
-		case "exit", "quit":
-			fmt.Println("Saving and exiting. Goodbye!")
-			return
-		case "help":
-			fmt.Println(helpText)
-			continue
-		}
-
-		// Parse and execute the SQL command
-		stmt, err := sql.ParseSQL(input)
-		if err != nil {
-			logger.Errorf("Error parsing command '%s': %v", input, err)
-			continue
-		}
-
-		if err := stmt.Exec(database); err != nil {
-			logger.Errorf("Error executing command '%s': %v", input, err)
-		}
-
-		logger.Debugf("Command executed successfully: %s", input)
-	}
+    fmt.Println(welcome)
+    fmt.Println("Welcome to SQLight! Type 'help' for usage information.")
+    fmt.Println("Using database file: database.json\n")
 }

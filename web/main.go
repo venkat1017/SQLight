@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sqlight/pkg/db"
 	"sqlight/pkg/interfaces"
 	"sqlight/pkg/sql"
@@ -17,9 +18,10 @@ type QueryRequest struct {
 }
 
 type QueryResponse struct {
-	Success bool                 `json:"success"`
-	Message string               `json:"message,omitempty"`
-	Records []*interfaces.Record `json:"records,omitempty"`
+	Success bool                   `json:"success"`
+	Message string                `json:"message,omitempty"`
+	Records []map[string]interface{} `json:"records,omitempty"`
+	Columns []string              `json:"columns,omitempty"`
 }
 
 const dbFile = "database.json"
@@ -86,10 +88,27 @@ func main() {
 			log.Printf("Failed to save database: %v", err)
 		}
 
+		// Convert records to map format and get sorted columns
+		var records []map[string]interface{}
+		var columns []string
+		if result.Records != nil && len(result.Records) > 0 {
+			// Get and sort columns
+			for col := range result.Records[0].Columns {
+				columns = append(columns, col)
+			}
+			sort.Strings(columns)
+
+			// Convert records
+			for _, record := range result.Records {
+				records = append(records, record.Columns)
+			}
+		}
+
 		json.NewEncoder(w).Encode(QueryResponse{
 			Success: true,
 			Message: result.Message,
-			Records: result.Records,
+			Records: records,
+			Columns: columns,
 		})
 	})
 
@@ -97,6 +116,7 @@ func main() {
 	http.HandleFunc("/tables", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		tables := database.GetTables()
+		sort.Strings(tables) // Sort tables for consistent order
 		json.NewEncoder(w).Encode(tables)
 	})
 
