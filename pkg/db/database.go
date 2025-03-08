@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 
 	"sqlight/pkg/interfaces"
@@ -14,11 +14,11 @@ import (
 
 // Database represents a SQLite database
 type Database struct {
-	mutex       sync.RWMutex
-	tables      map[string]*interfaces.Table
-	path        string
+	mutex         sync.RWMutex
+	tables        map[string]*interfaces.Table
+	path          string
 	inTransaction bool
-	snapshot    map[string]*interfaces.Table
+	snapshot      map[string]*interfaces.Table
 }
 
 // NewDatabase creates a new database instance
@@ -50,7 +50,7 @@ func (d *Database) Execute(stmt interfaces.Statement) (*interfaces.Result, error
 	default:
 		d.mutex.Lock()
 		defer d.mutex.Unlock()
-		
+
 		switch s := stmt.(type) {
 		case *interfaces.CreateStatement:
 			return d.executeCreate(s)
@@ -191,392 +191,392 @@ func (d *Database) executeCreate(stmt *interfaces.CreateStatement) (*interfaces.
 
 // getColumnValue converts a value to the appropriate type based on column definition
 func getColumnValue(colDef *interfaces.Column, value interface{}) (interface{}, error) {
-    switch colDef.Type {
-    case "INT", "INTEGER":
-        switch v := value.(type) {
-        case int:
-            return v, nil
-        case float64:
-            return int(v), nil
-        case string:
-            return strconv.Atoi(v)
-        default:
-            return nil, fmt.Errorf("invalid integer value: %v", value)
-        }
-    case "TEXT":
-        return fmt.Sprintf("%v", value), nil
-    default:
-        return value, nil
-    }
+	switch colDef.Type {
+	case "INT", "INTEGER":
+		switch v := value.(type) {
+		case int:
+			return v, nil
+		case float64:
+			return int(v), nil
+		case string:
+			return strconv.Atoi(v)
+		default:
+			return nil, fmt.Errorf("invalid integer value: %v", value)
+		}
+	case "TEXT":
+		return fmt.Sprintf("%v", value), nil
+	default:
+		return value, nil
+	}
 }
 
 // compareValues compares two values based on their types
 func compareValues(v1, v2 interface{}) bool {
-    // Handle nil values
-    if v1 == nil && v2 == nil {
-        return true
-    }
-    if v1 == nil || v2 == nil {
-        return false
-    }
+	// Handle nil values
+	if v1 == nil && v2 == nil {
+		return true
+	}
+	if v1 == nil || v2 == nil {
+		return false
+	}
 
-    switch val1 := v1.(type) {
-    case int:
-        switch val2 := v2.(type) {
-        case int:
-            return val1 == val2
-        case float64:
-            return float64(val1) == val2
-        case string:
-            if num, err := strconv.Atoi(val2); err == nil {
-                return val1 == num
-            }
-        }
-    case float64:
-        switch val2 := v2.(type) {
-        case float64:
-            return val1 == val2
-        case int:
-            return val1 == float64(val2)
-        case string:
-            if num, err := strconv.ParseFloat(val2, 64); err == nil {
-                return val1 == num
-            }
-        }
-    case string:
-        switch val2 := v2.(type) {
-        case string:
-            // For string comparison, use exact matching
-            return val1 == val2
-        case int:
-            if num, err := strconv.Atoi(val1); err == nil {
-                return num == val2
-            }
-        case float64:
-            if num, err := strconv.ParseFloat(val1, 64); err == nil {
-                return num == val2
-            }
-        }
-    }
-    return false
+	switch val1 := v1.(type) {
+	case int:
+		switch val2 := v2.(type) {
+		case int:
+			return val1 == val2
+		case float64:
+			return float64(val1) == val2
+		case string:
+			if num, err := strconv.Atoi(val2); err == nil {
+				return val1 == num
+			}
+		}
+	case float64:
+		switch val2 := v2.(type) {
+		case float64:
+			return val1 == val2
+		case int:
+			return val1 == float64(val2)
+		case string:
+			if num, err := strconv.ParseFloat(val2, 64); err == nil {
+				return val1 == num
+			}
+		}
+	case string:
+		switch val2 := v2.(type) {
+		case string:
+			// For string comparison, use exact matching
+			return val1 == val2
+		case int:
+			if num, err := strconv.Atoi(val1); err == nil {
+				return num == val2
+			}
+		case float64:
+			if num, err := strconv.ParseFloat(val1, 64); err == nil {
+				return num == val2
+			}
+		}
+	}
+	return false
 }
 
 // executeInsert handles INSERT statements
 func (d *Database) executeInsert(stmt *interfaces.InsertStatement) (*interfaces.Result, error) {
-    table, tableName, err := d.getTable(stmt.TableName, true)
-    if err != nil {
-        return nil, err
-    }
+	table, tableName, err := d.getTable(stmt.TableName, true)
+	if err != nil {
+		return nil, err
+	}
 
-    // Create column name mapping for case-insensitive comparison
-    columnMap := d.getColumnMap(table)
+	// Create column name mapping for case-insensitive comparison
+	columnMap := d.getColumnMap(table)
 
-    // Create a new record with the provided values
-    record := &interfaces.Record{
-        Columns: make(map[string]interface{}),
-    }
+	// Create a new record with the provided values
+	record := &interfaces.Record{
+		Columns: make(map[string]interface{}),
+	}
 
-    // Validate column count
-    if len(stmt.Columns) != len(stmt.Values) {
-        return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(stmt.Columns), len(stmt.Values))
-    }
+	// Validate column count
+	if len(stmt.Columns) != len(stmt.Values) {
+		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(stmt.Columns), len(stmt.Values))
+	}
 
-    // First pass: validate and set column values
-    for i, col := range stmt.Columns {
-        actualCol, exists := columnMap[strings.ToLower(col)]
-        if !exists {
-            return nil, fmt.Errorf("column %s does not exist", col)
-        }
+	// First pass: validate and set column values
+	for i, col := range stmt.Columns {
+		actualCol, exists := columnMap[strings.ToLower(col)]
+		if !exists {
+			return nil, fmt.Errorf("column %s does not exist", col)
+		}
 
-        // Get column definition
-        var colDef *interfaces.Column
-        for _, c := range table.Columns {
-            if c.Name == actualCol {
-                colDef = &c
-                break
-            }
-        }
-        if colDef == nil {
-            return nil, fmt.Errorf("column %s not found in table definition", actualCol)
-        }
+		// Get column definition
+		var colDef *interfaces.Column
+		for _, c := range table.Columns {
+			if c.Name == actualCol {
+				colDef = &c
+				break
+			}
+		}
+		if colDef == nil {
+			return nil, fmt.Errorf("column %s not found in table definition", actualCol)
+		}
 
-        // Convert and validate value
-        value, err := getColumnValue(colDef, stmt.Values[i])
-        if err != nil {
-            return nil, fmt.Errorf("invalid value for column %s: %v", actualCol, err)
-        }
-        record.Columns[actualCol] = value
-    }
+		// Convert and validate value
+		value, err := getColumnValue(colDef, stmt.Values[i])
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for column %s: %v", actualCol, err)
+		}
+		record.Columns[actualCol] = value
+	}
 
-    // Second pass: validate constraints
-    for _, col := range table.Columns {
-        value, exists := record.Columns[col.Name]
+	// Second pass: validate constraints
+	for _, col := range table.Columns {
+		value, exists := record.Columns[col.Name]
 
-        // Check NOT NULL constraint
-        if !col.Nullable && (!exists || value == nil) {
-            return nil, fmt.Errorf("column %s cannot be null", col.Name)
-        }
+		// Check NOT NULL constraint
+		if !col.Nullable && (!exists || value == nil) {
+			return nil, fmt.Errorf("column %s cannot be null", col.Name)
+		}
 
-        // Check PRIMARY KEY and UNIQUE constraints
-        if (col.PrimaryKey || col.Unique) && exists && value != nil {
-            for _, existingRecord := range table.Records {
-                existingValue := existingRecord.Columns[col.Name]
-                if existingValue == nil {
-                    continue
-                }
+		// Check PRIMARY KEY and UNIQUE constraints
+		if (col.PrimaryKey || col.Unique) && exists && value != nil {
+			for _, existingRecord := range table.Records {
+				existingValue := existingRecord.Columns[col.Name]
+				if existingValue == nil {
+					continue
+				}
 
-                // For string values, do exact comparison
-                if strValue, ok := value.(string); ok {
-                    if strExistingValue, ok := existingValue.(string); ok {
-                        if strValue == strExistingValue {
-                            constraint := "UNIQUE"
-                            if col.PrimaryKey {
-                                constraint = "PRIMARY KEY"
-                            }
-                            return nil, fmt.Errorf("duplicate value in %s column %s", constraint, col.Name)
-                        }
-                        continue
-                    }
-                }
+				// For string values, do exact comparison
+				if strValue, ok := value.(string); ok {
+					if strExistingValue, ok := existingValue.(string); ok {
+						if strValue == strExistingValue {
+							constraint := "UNIQUE"
+							if col.PrimaryKey {
+								constraint = "PRIMARY KEY"
+							}
+							return nil, fmt.Errorf("duplicate value in %s column %s", constraint, col.Name)
+						}
+						continue
+					}
+				}
 
-                // For other types use compareValues
-                if compareValues(value, existingValue) {
-                    constraint := "UNIQUE"
-                    if col.PrimaryKey {
-                        constraint = "PRIMARY KEY"
-                    }
-                    return nil, fmt.Errorf("duplicate value in %s column %s", constraint, col.Name)
-                }
-            }
-        }
-    }
+				// For other types use compareValues
+				if compareValues(value, existingValue) {
+					constraint := "UNIQUE"
+					if col.PrimaryKey {
+						constraint = "PRIMARY KEY"
+					}
+					return nil, fmt.Errorf("duplicate value in %s column %s", constraint, col.Name)
+				}
+			}
+		}
+	}
 
-    // Add record to table
-    table.Records = append(table.Records, record)
+	// Add record to table
+	table.Records = append(table.Records, record)
 
-    // Update the appropriate table map
-    if d.inTransaction {
-        d.snapshot[tableName] = table
-    } else {
-        d.tables[tableName] = table
-        if err := d.save(); err != nil {
-            return nil, err
-        }
-    }
+	// Update the appropriate table map
+	if d.inTransaction {
+		d.snapshot[tableName] = table
+	} else {
+		d.tables[tableName] = table
+		if err := d.save(); err != nil {
+			return nil, err
+		}
+	}
 
-    return &interfaces.Result{
-        Success: true,
-        Message: "Record inserted successfully",
-    }, nil
+	return &interfaces.Result{
+		Success: true,
+		Message: "Record inserted successfully",
+	}, nil
 }
 
 // executeSelect handles SELECT statements
 func (d *Database) executeSelect(stmt *interfaces.SelectStatement) (*interfaces.Result, error) {
-    table, _, err := d.getTable(stmt.TableName, true)
-    if err != nil {
-        return nil, err
-    }
+	table, _, err := d.getTable(stmt.TableName, true)
+	if err != nil {
+		return nil, err
+	}
 
-    // Get column names case-insensitively
-    columnMap := d.getColumnMap(table)
-    
-    // Prepare result columns
-    columns := make([]string, 0)
-    if len(stmt.Columns) == 0 || stmt.Columns[0] == "*" {
-        for _, col := range table.Columns {
-            columns = append(columns, col.Name)
-        }
-    } else {
-        for _, col := range stmt.Columns {
-            actualCol, exists := columnMap[strings.ToLower(col)]
-            if !exists {
-                return nil, fmt.Errorf("column %s does not exist", col)
-            }
-            columns = append(columns, actualCol)
-        }
-    }
+	// Get column names case-insensitively
+	columnMap := d.getColumnMap(table)
 
-    // Filter records based on WHERE conditions
-    var filteredRecords []*interfaces.Record
-    
-    // If no WHERE conditions, include all records
-    if len(stmt.Where) == 0 {
-        filteredRecords = table.Records
-    } else {
-        // Apply WHERE conditions
-        for _, record := range table.Records {
-            match := true
-            for whereCol, whereCondition := range stmt.Where {
-                // Get actual column name from case-insensitive map
-                actualCol, exists := columnMap[strings.ToLower(whereCol)]
-                if !exists {
-                    return nil, fmt.Errorf("column %s does not exist", whereCol)
-                }
+	// Prepare result columns
+	columns := make([]string, 0)
+	if len(stmt.Columns) == 0 || stmt.Columns[0] == "*" {
+		for _, col := range table.Columns {
+			columns = append(columns, col.Name)
+		}
+	} else {
+		for _, col := range stmt.Columns {
+			actualCol, exists := columnMap[strings.ToLower(col)]
+			if !exists {
+				return nil, fmt.Errorf("column %s does not exist", col)
+			}
+			columns = append(columns, actualCol)
+		}
+	}
 
-                recordValue := record.Columns[actualCol]
-                if recordValue == nil {
-                    match = false
-                    break
-                }
+	// Filter records based on WHERE conditions
+	var filteredRecords []*interfaces.Record
 
-                // Extract operator and value from the condition
-                condMap, ok := whereCondition.(map[string]interface{})
-                if !ok {
-                    return nil, fmt.Errorf("invalid where condition format")
-                }
-                
-                operator := condMap["operator"].(string)
-                whereVal := condMap["value"]
+	// If no WHERE conditions, include all records
+	if len(stmt.Where) == 0 {
+		filteredRecords = table.Records
+	} else {
+		// Apply WHERE conditions
+		for _, record := range table.Records {
+			match := true
+			for whereCol, whereCondition := range stmt.Where {
+				// Get actual column name from case-insensitive map
+				actualCol, exists := columnMap[strings.ToLower(whereCol)]
+				if !exists {
+					return nil, fmt.Errorf("column %s does not exist", whereCol)
+				}
 
-                // Compare based on operator
-                if !compareWithOperator(whereVal, recordValue, operator) {
-                    match = false
-                    break
-                }
-            }
+				recordValue := record.Columns[actualCol]
+				if recordValue == nil {
+					match = false
+					break
+				}
 
-            if match {
-                filteredRecords = append(filteredRecords, record)
-            }
-        }
-    }
+				// Extract operator and value from the condition
+				condMap, ok := whereCondition.(map[string]interface{})
+				if !ok {
+					return nil, fmt.Errorf("invalid where condition format")
+				}
 
-    // Format records
-    var formattedRecords []*interfaces.Record
-    for _, record := range filteredRecords {
-        formattedRecord := &interfaces.Record{
-            Columns: make(map[string]interface{}),
-        }
-        for _, col := range columns {
-            formattedRecord.Columns[col] = record.Columns[col]
-        }
-        formattedRecords = append(formattedRecords, formattedRecord)
-    }
+				operator := condMap["operator"].(string)
+				whereVal := condMap["value"]
 
-    return &interfaces.Result{
-        Success:  true,
-        Columns:  columns,
-        Records:  formattedRecords,
-        IsSelect: true,
-    }, nil
+				// Compare based on operator
+				if !compareWithOperator(whereVal, recordValue, operator) {
+					match = false
+					break
+				}
+			}
+
+			if match {
+				filteredRecords = append(filteredRecords, record)
+			}
+		}
+	}
+
+	// Format records
+	var formattedRecords []*interfaces.Record
+	for _, record := range filteredRecords {
+		formattedRecord := &interfaces.Record{
+			Columns: make(map[string]interface{}),
+		}
+		for _, col := range columns {
+			formattedRecord.Columns[col] = record.Columns[col]
+		}
+		formattedRecords = append(formattedRecords, formattedRecord)
+	}
+
+	return &interfaces.Result{
+		Success:  true,
+		Columns:  columns,
+		Records:  formattedRecords,
+		IsSelect: true,
+	}, nil
 }
 
 // compareWithOperator compares two values using the specified operator
 func compareWithOperator(v1, v2 interface{}, operator string) bool {
-    // Handle nil values
-    if v1 == nil && v2 == nil {
-        return operator == "="
-    }
-    if v1 == nil || v2 == nil {
-        return operator == "!="
-    }
+	// Handle nil values
+	if v1 == nil && v2 == nil {
+		return operator == "="
+	}
+	if v1 == nil || v2 == nil {
+		return operator == "!="
+	}
 
-    // v1 is the value from the WHERE condition
-    // v2 is the value from the record
-    // So the comparison should be: record_value operator condition_value
-    // For example: if WHERE age > 30, then we check if record.age > 30
+	// v1 is the value from the WHERE condition
+	// v2 is the value from the record
+	// So the comparison should be: record_value operator condition_value
+	// For example: if WHERE age > 30, then we check if record.age > 30
 
-    switch val1 := v1.(type) {
-    case int:
-        switch val2 := v2.(type) {
-        case int:
-            return compareInts(val2, val1, operator)
-        case float64:
-            return compareFloats(val2, float64(val1), operator)
-        case string:
-            if num, err := strconv.Atoi(val2); err == nil {
-                return compareInts(num, val1, operator)
-            }
-            if num, err := strconv.ParseFloat(val2, 64); err == nil {
-                return compareFloats(num, float64(val1), operator)
-            }
-        }
-    case float64:
-        switch val2 := v2.(type) {
-        case float64:
-            return compareFloats(val2, val1, operator)
-        case int:
-            return compareFloats(float64(val2), val1, operator)
-        case string:
-            if num, err := strconv.ParseFloat(val2, 64); err == nil {
-                return compareFloats(num, val1, operator)
-            }
-        }
-    case string:
-        switch val2 := v2.(type) {
-        case string:
-            return compareStrings(val2, val1, operator)
-        case int:
-            if num, err := strconv.Atoi(val1); err == nil {
-                return compareInts(val2, num, operator)
-            }
-        case float64:
-            if num, err := strconv.ParseFloat(val1, 64); err == nil {
-                return compareFloats(val2, num, operator)
-            }
-        }
-    }
-    return false
+	switch val1 := v1.(type) {
+	case int:
+		switch val2 := v2.(type) {
+		case int:
+			return compareInts(val2, val1, operator)
+		case float64:
+			return compareFloats(val2, float64(val1), operator)
+		case string:
+			if num, err := strconv.Atoi(val2); err == nil {
+				return compareInts(num, val1, operator)
+			}
+			if num, err := strconv.ParseFloat(val2, 64); err == nil {
+				return compareFloats(num, float64(val1), operator)
+			}
+		}
+	case float64:
+		switch val2 := v2.(type) {
+		case float64:
+			return compareFloats(val2, val1, operator)
+		case int:
+			return compareFloats(float64(val2), val1, operator)
+		case string:
+			if num, err := strconv.ParseFloat(val2, 64); err == nil {
+				return compareFloats(num, val1, operator)
+			}
+		}
+	case string:
+		switch val2 := v2.(type) {
+		case string:
+			return compareStrings(val2, val1, operator)
+		case int:
+			if num, err := strconv.Atoi(val1); err == nil {
+				return compareInts(val2, num, operator)
+			}
+		case float64:
+			if num, err := strconv.ParseFloat(val1, 64); err == nil {
+				return compareFloats(val2, num, operator)
+			}
+		}
+	}
+	return false
 }
 
 // compareInts compares two integers using the specified operator
 func compareInts(a, b int, operator string) bool {
-    switch operator {
-    case "=":
-        return a == b
-    case "!=":
-        return a != b
-    case ">":
-        return a > b
-    case "<":
-        return a < b
-    case ">=":
-        return a >= b
-    case "<=":
-        return a <= b
-    default:
-        return false
-    }
+	switch operator {
+	case "=":
+		return a == b
+	case "!=":
+		return a != b
+	case ">":
+		return a > b
+	case "<":
+		return a < b
+	case ">=":
+		return a >= b
+	case "<=":
+		return a <= b
+	default:
+		return false
+	}
 }
 
 // compareFloats compares two floats using the specified operator
 func compareFloats(a, b float64, operator string) bool {
-    switch operator {
-    case "=":
-        return a == b
-    case "!=":
-        return a != b
-    case ">":
-        return a > b
-    case "<":
-        return a < b
-    case ">=":
-        return a >= b
-    case "<=":
-        return a <= b
-    default:
-        return false
-    }
+	switch operator {
+	case "=":
+		return a == b
+	case "!=":
+		return a != b
+	case ">":
+		return a > b
+	case "<":
+		return a < b
+	case ">=":
+		return a >= b
+	case "<=":
+		return a <= b
+	default:
+		return false
+	}
 }
 
 // compareStrings compares two strings using the specified operator
 func compareStrings(a, b string, operator string) bool {
-    switch operator {
-    case "=":
-        return strings.EqualFold(a, b)
-    case "!=":
-        return !strings.EqualFold(a, b)
-    case ">":
-        return a > b
-    case "<":
-        return a < b
-    case ">=":
-        return a >= b
-    case "<=":
-        return a <= b
-    default:
-        return false
-    }
+	switch operator {
+	case "=":
+		return strings.EqualFold(a, b)
+	case "!=":
+		return !strings.EqualFold(a, b)
+	case ">":
+		return a > b
+	case "<":
+		return a < b
+	case ">=":
+		return a >= b
+	case "<=":
+		return a <= b
+	default:
+		return false
+	}
 }
 
 // executeDescribe handles DESCRIBE statements
@@ -678,20 +678,20 @@ func (d *Database) executeDelete(stmt *interfaces.DeleteStatement) (*interfaces.
 					break
 				}
 
-                // Extract operator and value from the condition
-                condMap, ok := whereCondition.(map[string]interface{})
-                if !ok {
-                    return nil, fmt.Errorf("invalid where condition format")
-                }
-                
-                operator := condMap["operator"].(string)
-                whereVal := condMap["value"]
+				// Extract operator and value from the condition
+				condMap, ok := whereCondition.(map[string]interface{})
+				if !ok {
+					return nil, fmt.Errorf("invalid where condition format")
+				}
 
-                // Compare based on operator
-                if !compareWithOperator(whereVal, recordValue, operator) {
-                    match = false
-                    break
-                }
+				operator := condMap["operator"].(string)
+				whereVal := condMap["value"]
+
+				// Compare based on operator
+				if !compareWithOperator(whereVal, recordValue, operator) {
+					match = false
+					break
+				}
 			}
 			if !match {
 				newRecords = append(newRecords, record)
