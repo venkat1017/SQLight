@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"sort"
 	"sqlight/pkg/db"
-	"sqlight/pkg/interfaces"
 	"sqlight/pkg/sql"
+
+	"github.com/gorilla/mux"
 )
 
 type QueryRequest struct {
@@ -27,45 +28,38 @@ type QueryResponse struct {
 const dbFile = "database.json"
 
 func main() {
-	// Create a new database
-	database := db.NewDatabase()
-
-	// Load existing database if it exists
-	if _, err := os.Stat(dbFile); err == nil {
-		if err := database.Load(dbFile); err != nil {
-			log.Printf("Failed to load database: %v", err)
-		}
+	// Load database
+	database, err := db.NewDatabase(dbFile)
+	if err != nil {
+		log.Fatalf("Failed to load database: %v", err)
 	}
 
-	// Serve static files
-	fs := http.FileServer(http.Dir("web/static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
+	// Create router
+	r := mux.NewRouter()
 
-	// Serve index.html at root
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
+	// Serve static files
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+
+	// Handle root path
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "web/static/index.html")
 	})
 
-	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
+	// Handle query execution
+	r.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 
 		var req QueryRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			json.NewEncoder(w).Encode(QueryResponse{
+				Success: false,
+				Message: fmt.Sprintf("Invalid request: %v", err),
+			})
 			return
 		}
 
 		// Parse and execute the query
-		stmt, err := sql.ParseSQL(req.Query)
+		stmt, err := sql.Parse(req.Query)
 		if err != nil {
 			json.NewEncoder(w).Encode(QueryResponse{
 				Success: false,
@@ -91,33 +85,59 @@ func main() {
 		// Convert records to map format and get sorted columns
 		var records []map[string]interface{}
 		var columns []string
-		if result.Records != nil && len(result.Records) > 0 {
-			// Get and sort columns
-			for col := range result.Records[0].Columns {
-				columns = append(columns, col)
-			}
-			sort.Strings(columns)
 
-			// Convert records
+		// Process records for SELECT queries
+		if result.Records != nil && len(result.Records) > 0 {
+			// Use columns from the result
+			columns = result.Columns
+			if len(columns) == 0 && len(result.Records) > 0 {
+				// If columns not provided, get them from the first record
+				for col := range result.Records[0].Columns {
+					columns = append(columns, col)
+				}
+				sort.Strings(columns)
+			}
+
+			// Convert records to maps
 			for _, record := range result.Records {
-				records = append(records, record.Columns)
+				recordMap := make(map[string]interface{})
+				for _, col := range columns {
+					recordMap[col] = record.Columns[col]
+				}
+				records = append(records, recordMap)
+			}
+
+			// Log for debugging
+			log.Printf("Query: %s", req.Query)
+			log.Printf("Number of records: %d", len(records))
+			log.Printf("Columns: %v", columns)
+			if len(records) > 0 {
+				log.Printf("First record: %+v", records[0])
 			}
 		}
 
-		json.NewEncoder(w).Encode(QueryResponse{
-			Success: true,
-			Message: result.Message,
-			Records: records,
-			Columns: columns,
-		})
+		// Send response
+		response := QueryResponse{
+			Success:  true,
+			Message:  result.Message,
+			Records:  records,
+			Columns:  columns,
+		}
+
+		// Log response for debugging
+		log.Printf("Response: %+v", response)
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Failed to encode response: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	})
 
-	// Get list of tables
-	http.HandleFunc("/tables", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+	// Handle table list
+	r.HandleFunc("/tables", func(w http.ResponseWriter, r *http.Request) {
 		tables := database.GetTables()
-		sort.Strings(tables) // Sort tables for consistent order
-		json.NewEncoder(w).Encode(tables)
+		json.NewEncoder(w).Encode(map[string][]string{"tables": tables})
 	})
 
 	// Ensure the database file directory exists
@@ -126,6 +146,7 @@ func main() {
 	}
 
 	// Start server
-	fmt.Println("Server running at http://localhost:8081")
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	port := ":8081"
+	log.Printf("Server starting on http://localhost%s", port)
+	log.Fatal(http.ListenAndServe(port, r))
 }

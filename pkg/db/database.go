@@ -383,6 +383,7 @@ func (d *Database) executeSelect(stmt *interfaces.SelectStatement) (*interfaces.
 	// Prepare result columns
 	columns := make([]string, 0)
 	if len(stmt.Columns) == 0 || stmt.Columns[0] == "*" {
+		// For SELECT *, use the original column order from table definition
 		for _, col := range table.Columns {
 			columns = append(columns, col.Name)
 		}
@@ -398,65 +399,49 @@ func (d *Database) executeSelect(stmt *interfaces.SelectStatement) (*interfaces.
 
 	// Filter records based on WHERE conditions
 	var filteredRecords []*interfaces.Record
-
-	// If no WHERE conditions, include all records
 	if len(stmt.Where) == 0 {
-		filteredRecords = table.Records
+		// If no WHERE clause, include all records
+		filteredRecords = make([]*interfaces.Record, len(table.Records))
+		copy(filteredRecords, table.Records)
 	} else {
 		// Apply WHERE conditions
 		for _, record := range table.Records {
-			match := true
-			for whereCol, whereCondition := range stmt.Where {
-				// Get actual column name from case-insensitive map
-				actualCol, exists := columnMap[strings.ToLower(whereCol)]
+			matches := true
+			for col, value := range stmt.Where {
+				actualCol, exists := columnMap[strings.ToLower(col)]
 				if !exists {
-					return nil, fmt.Errorf("column %s does not exist", whereCol)
+					return nil, fmt.Errorf("column %s does not exist", col)
 				}
 
 				recordValue := record.Columns[actualCol]
-				if recordValue == nil {
-					match = false
-					break
-				}
-
-				// Extract operator and value from the condition
-				condMap, ok := whereCondition.(map[string]interface{})
-				if !ok {
-					return nil, fmt.Errorf("invalid where condition format")
-				}
-
-				operator := condMap["operator"].(string)
-				whereVal := condMap["value"]
-
-				// Compare based on operator
-				if !compareWithOperator(whereVal, recordValue, operator) {
-					match = false
+				if !compareValues(recordValue, value) {
+					matches = false
 					break
 				}
 			}
-
-			if match {
+			if matches {
 				filteredRecords = append(filteredRecords, record)
 			}
 		}
 	}
 
-	// Format records
-	var formattedRecords []*interfaces.Record
+	// Create result records with only the requested columns
+	resultRecords := make([]*interfaces.Record, 0, len(filteredRecords))
 	for _, record := range filteredRecords {
-		formattedRecord := &interfaces.Record{
+		resultRecord := &interfaces.Record{
 			Columns: make(map[string]interface{}),
 		}
 		for _, col := range columns {
-			formattedRecord.Columns[col] = record.Columns[col]
+			resultRecord.Columns[col] = record.Columns[col]
 		}
-		formattedRecords = append(formattedRecords, formattedRecord)
+		resultRecords = append(resultRecords, resultRecord)
 	}
 
 	return &interfaces.Result{
 		Success:  true,
+		Message:  fmt.Sprintf("Found %d record(s)", len(resultRecords)),
+		Records:  resultRecords,
 		Columns:  columns,
-		Records:  formattedRecords,
 		IsSelect: true,
 	}, nil
 }
@@ -771,4 +756,44 @@ func (d *Database) load() error {
 		return err
 	}
 	return json.Unmarshal(data, &d.tables)
+}
+
+// GetTables returns a list of all table names in the database
+func (d *Database) GetTables() []string {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	tableNames := make([]string, 0, len(d.tables))
+	for name := range d.tables {
+		tableNames = append(tableNames, name)
+	}
+
+	return tableNames
+}
+
+// Save saves the database to the specified file
+func (d *Database) Save(path string) error {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	// Use the provided path or the default one
+	savePath := path
+	if savePath == "" {
+		savePath = d.path
+	}
+
+	// Create a serializable representation of the database
+	serialized := make(map[string]interfaces.Table)
+	for name, table := range d.tables {
+		serialized[name] = *table
+	}
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(serialized, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	// Write to file
+	return ioutil.WriteFile(savePath, data, 0644)
 }
